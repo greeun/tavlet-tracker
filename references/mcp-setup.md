@@ -147,7 +147,8 @@ git check-ignore -v .tavlet.json   # 매칭 줄이 나와야 생성한다
 | 증상 | 원인 | 조치 |
 |---|---|---|
 | `board_*` 도구가 세션에 아예 없다 | 등록이 안 됐거나 세션 재시작 전 | `claude mcp list` 로 등록 확인 → 세션 재시작. `.mcp.json` JSON 문법 오류도 흔한 원인이다 |
-| 연결 자체가 401 | Authorization 헤더가 전달되지 않았거나 토큰이 무효 | B안의 `${VAR}` 치환이 동작하지 않는 경우가 대부분 — A안으로 전환. 401 `AGENT_TOKEN_REQUIRED` 는 헤더가 아예 없다는 뜻이다 |
+| 401 `{"success":false,"error":{"code":40101,…}}` | Authorization 헤더가 전달되지 않았다 | B안의 `${VAR}` 치환이 동작하지 않는 경우가 대부분 — A안으로 전환 |
+| 401 `{"ok":false,"code":"AGENT_TOKEN_REQUIRED"}` | 인증은 됐지만 PAT 가 아니다(쿠키 세션) | MCP 는 에이전트 토큰 전용 표면이다. `tvl_` 접두사 PAT 를 헤더로 넘긴다 |
 | 도구 결과가 `INVALID_API_TOKEN` | PAT 가 무효(폐기·오타) | 콘솔에서 재발급 |
 | 도구 결과가 403 `TOKEN_SCOPE_DENIED` | 그 대상이 토큰 스코프 밖 | 스코프에 대상 보드 grant 추가. 조회 도구는 READ, 쓰기 도구는 WRITE 를 요구한다 |
 | 목록이 **빈 배열** | 이 토큰이 쓸 수 있는 보드가 하나도 없다 | 토큰 스코프에 WRITE grant를 추가한다. **쓰기 경로로 진행하지 않는다** |

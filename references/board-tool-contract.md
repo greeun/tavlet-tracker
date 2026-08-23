@@ -39,7 +39,8 @@ catch (e) { return { content: [{ type: "text", text: String(e) }], isError: true
 **전역 실패 모드:**
 | 증상 | 경로 | 원인 |
 |---|---|---|
-| HTTP 401 `AGENT_TOKEN_REQUIRED` | 원격 | Authorization 헤더가 없다 — MCP는 사람 세션 표면이 아니다 |
+| HTTP 401 `{"success":false,"error":{"code":40101,…}}` | 원격 | Authorization 헤더가 없다 |
+| HTTP 401 `AGENT_TOKEN_REQUIRED` | 원격 | 인증은 됐지만 PAT 가 아니다(쿠키 세션) — MCP는 에이전트 토큰 전용 표면이다 |
 | HTTP 401 `INVALID_API_TOKEN` | 원격 | PAT 가 무효(폐기·오타) |
 | `{"ok":false,…,"code":"TOKEN_SCOPE_DENIED"}` (403) | 원격 | 대상이 토큰 스코프 밖. 조회 도구는 READ, 쓰기 도구는 WRITE grant 를 요구한다 |
 | `BOARD_TOKEN 미설정` | stdio | env `BOARD_TOKEN`이 MCP 서버 프로세스에 전달되지 않음 (`board-client.ts:9-10`) |
