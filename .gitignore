@@ -1,0 +1,10 @@
+# Local Claude Code tooling (symlinks / machine-local profiles)
+.claude/
+.axt-profile.json
+
+# Python
+__pycache__/
+*.py[cod]
+
+# OS
+.DS_Store
