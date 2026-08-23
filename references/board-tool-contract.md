@@ -69,11 +69,11 @@ PAT 접두사: 신규 발급은 `tvl_`, 레거시 `hhb_`는 **검증 수용 전�
 
 ```jsonc
 { "boards": [ {
-    "boardId": "xnUwXGnBK4E2",
+    "boardId": "<boardId>",
     "projectId": "<DB id>",              // ← 릴리스 도구의 projectId 인자는 여기서 해소한다
     "kind": "FEATURE",                   // FEATURE | BUG | FEEDBACK — 공개 여부가 아니다
     "name": "내부 작업",
-    "org":       { "slug": "tavlet-io", "name": "..." },
+    "org":       { "slug": "<org-slug>", "name": "..." },
     "workspace": { "slug": "default",   "name": "..." },
     "project":   { "slug": "default",   "name": "..." },
     "url": "/o/{orgSlug}/{wsSlug}/{projSlug}/{boardId}"
@@ -83,16 +83,19 @@ PAT 접두사: 신규 발급은 `tvl_`, 레거시 `hhb_`는 **검증 수용 전�
 - 이 목록은 **현재 토큰의 WRITE grant가 커버하는 보드만** 담는다 (`agent-boards.ts:37-44`). **목록에 없는 boardId는 그 토큰으로 쓸 수 없다.** 테넌트 확인의 정본 수단이다.
 - 보드 피드 URL: `/o/{orgSlug}/{wsSlug}/{projSlug}/{boardId}` — 마지막 세그먼트가 **boardId**
 - post URL: `/o/{orgSlug}/{wsSlug}/{projSlug}/{boardId}/post/{postId}` — 마지막 세그먼트가 **postId**
-- 커밋 트레일러: `[tv:<taskId>]` — 그 커밋이 다루는 task마다 1개, 복수면 공백 나열 (근거: tavlet `agent/skills/tavlet-board-work/SKILL.md:21`)
+- 커밋 트레일러: 이 스킬은 특정 트레일러 형식을 **요구하지 않는다.** 구 `[tv:<taskId>]` 규약은 tavlet 레포의 S0~S4 파이프라인과 공존하기 위한 것이었고, 그 파이프라인은 삭제됐다(tavlet `ff3fa1f`). 대상 레포에 자체 규약이 있으면 그것을 따른다.
 
-### 정본 테넌트 (근거: tavlet `CLAUDE.md:14-18`)
+### 대상 테넌트 — 하드코딩하지 않는다
 
-| 대상 | 값 |
+이 스킬은 tavlet.io 의 **모든 org**에서 동작한다. 특정 org의 boardId·slug 를 이 파일에 적어 두지 않는다 — 그 값은 실행 환경마다 다르고, 적어 두면 다른 테넌트에서 조용히 틀린 보드를 가리키게 된다.
+
+| 무엇 | 어디서 온다 |
 |---|---|
-| 프로덕션 | `tavlet.io` — org `tavlet-io` / workspace `default` / project `default` |
-| 공개 기능요청 보드 | `M6Nz6bWCr2Ow` — **공개(PUBLIC) 로드맵, 외부 독자가 읽는다** |
-| 내부 부채 보드 | `xnUwXGnBK4E2` — **INTERNAL**, 기본 등록 대상 |
-| 구 dev 보드 | `withwiz/heyhey/tavlet-web` — 2026-08-22 전건 이관 후 **이력 전용, 쓰기 금지** |
+| `baseUrl` · `org` · `workspace` · `project` · `boardId` · `boardVisibility` | 대상 레포의 `.tavlet.json` (스키마: `mcp-setup.md` §3) |
+| 그 boardId 가 실재하는지 | 매 실행 `board_list_boards()` 반환과 대조 (게이트 **G3**) |
+| 공개면 여부 | `.tavlet.json` 의 `boardVisibility` 선언 — 어떤 도구도 반환하지 않는다(아래 §가시성) |
+
+`.tavlet.json` 이 없으면 사용자에게 묻고, `board_list_boards()` 로 실재를 확인한 뒤 생성을 제안한다. **추측한 boardId 로 쓰기를 진행하지 않는다.**
 
 ### §가시성 — 어떤 도구도 공개 여부를 반환하지 않는다
 

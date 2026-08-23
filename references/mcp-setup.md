@@ -92,19 +92,19 @@ tavlet `CLAUDE.md:16-17`은 "등록 대상 보드는 `.tavlet.json`(gitignore, �
 ```jsonc
 {
   "baseUrl": "https://tavlet.io",        // 필수. localhost 가 아니면 G6 프로덕션 경고 발동
-  "org": "tavlet-io",                    // 필수. URL 조립 + 테넌트 식별 (org SLUG)
+  "org": "<org-slug>",                   // 필수. URL 조립 + 테넌트 식별 (org SLUG)
   "workspace": "default",                // 필수. URL 조립 (workspace SLUG)
   "project": "default",                  // 필수. project SLUG — projectId 가 아니다
   "projectId": "<board_list_boards.projectId>", // 선택. 릴리스 도구용 DB id.
                                          //   없으면 실행 시 board_list_boards 로 해소하고 기록을 제안
-  "boardId": "xnUwXGnBK4E2",             // 필수. 기본 등록 대상
+  "boardId": "<boardId>",                // 필수. 기본 등록 대상 — board_list_boards() 반환값에서 고른다
   "boardVisibility": "INTERNAL",         // 필수. PUBLIC | INTERNAL | PRIVATE — G6 공개면 경고 판단의 정본
   "boardKind": "<board_list_boards().kind 를 그대로 옮겨 적는다>",
                                          // 선택. FEATURE | BUG | FEEDBACK 중 하나.
                                          //   ↑ 예시값을 복사하지 말 것. 보드의 실제 kind 는 DB에만 있고
                                          //   소스로 확인할 수 없다. board_list_boards() 반환값을 채운다.
                                          //   용도는 그 반환값과의 대조뿐이며, 공개 여부 판정에는 쓰지 않는다.
-  "publicBoardId": "M6Nz6bWCr2Ow",       // 선택. 공개면에 올릴 때만 명시 지정
+  "publicBoardId": "<공개 boardId>",      // 선택. 공개면에 올릴 때만 명시 지정
   "mcpServerName": "board"               // 선택. 기본 "board"
 }
 ```
