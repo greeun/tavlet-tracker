@@ -1,12 +1,12 @@
 ---
 name: tavlet-tracker
 description: 임의의 Claude Code 세션(어느 레포에서든)에서 수행한 작업을 tavlet 피드백 보드에 MCP board 서버 도구 14종으로 등록·추적한다 — 기존 post 중복 탐색 → post 등록 → task 분해·상태 갱신 → 증거 기반 세션 다이제스트 댓글 → post 상태 전이 → 분류/중복 제안 → 릴리스 초안까지 전체 라이프사이클. 모든 쓰기는 정확한 인자 미리보기 + 사용자 명시 승인 게이트를 거치고, Planner→Generator→Evaluator 하네스가 등록 전 초안의 증거 구체성(파일 경로·커밋 해시·명령 출력)과 세션 사실성(환각 금지)을 적대적으로 심사한다. 멀티테넌트이므로 MCP 등록은 프로젝트 단위로 분리한다. 트리거 — KO "tavlet 등록", "보드에 올려", "작업 기록", "tvl", "타블렛 보드", "보드에 기록", "post 등록", "task 상태 갱신", "세션 결과 보드 반영", "릴리스 초안". EN "tavlet", "log work to tavlet", "track work on tavlet board", "register post on tavlet board".
-version: 1.0.0
+version: 1.1.0
 ---
 
 # tavlet-tracker
 
-이 세션에서 **실제로 수행한 개발 작업**을 tavlet 피드백 보드에 등록·추적한다. 접근 경로는 stdio MCP 서버 `board`가 노출하는 **도구 14종**뿐이다. REST를 직접 호출하거나 별도 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다.
+이 세션에서 **실제로 수행한 개발 작업**을 tavlet 피드백 보드에 등록·추적한다. 접근 경로는 MCP 서버가 노출하는 **도구 14종**뿐이다(정규 경로는 원격 `https://tavlet.io/api/mcp`, 등록은 `references/mcp-setup.md`). REST를 직접 호출하거나 별도 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다.
 
 모든 쓰기는 프로덕션 `tavlet.io`에 대한 **되돌리기 어려운 부작용**이고, 대상 보드 중 일부는 **외부 독자가 읽는 공개 면**이다. 그래서 이 스킬의 하네스는 "더 나은 글"이 아니라 **"등록해도 되는 글"** 을 만든다.
 
@@ -39,10 +39,16 @@ tavlet 레포 안에는 세션 전용 파이프라인 스킬이 이미 있다: `
 | 구조 | 얇은 스킬 6종의 순차 파이프라인 | 단일 스킬 + Planner/Generator/Evaluator 하네스 |
 | 품질 보증 | 각 스킬의 미리보기·승인 게이트 | 승인 게이트 + **등록 전 증거·사실성 적대 심사** |
 
-**경계 규칙(게이트 G2로 강제):**
-- 판정: 레포 루트에 `agent/mcp/board/server.ts` **와** `agent/skills/tavlet-board-submit/SKILL.md` 가 **둘 다** 존재하면 tavlet 레포다.
-- tavlet 레포이면 → 핸드오프를 제안한다: "이 레포에는 전용 파이프라인이 있습니다 — `/tav`(S0 등록) → S1 인테이크 → S3 처리 → S4 결과등록. 그쪽으로 넘길까요?" 사용자가 이 스킬로 계속하겠다고 **명시하기 전까지 진행하지 않는다.**
-- S0~S4의 절차를 **재구현하지 않는다.** 다만 공유 규약은 **동일하게 지켜** 두 경로가 같은 보드에서 충돌하지 않게 한다 — 커밋 트레일러 `[tv:<taskId>]`(task마다 1개, 복수면 공백 나열), post URL 형태, 필드 길이 상한, 빈 등록 금지, 미리보기·승인 게이트.
+> ⚠️ **위 비교표의 왼쪽 열(S0~S4 파이프라인)은 더 이상 존재하지 않는다.** tavlet 레포의
+> `agent/skills/tavlet-board-*` 와 `agent/commands/tav.md` 는 2026-08-22 커밋 `ff3fa1f`
+> ("tavlet 보드 스킬·커맨드·MCP 등록 제거")에서 삭제됐고, tavlet `CLAUDE.md` 는 보드 등록을
+> **이 스킬 경로로 대체**한다고 기록한다. 표는 두 경로가 공존하던 시기의 이력으로 남긴다.
+
+**경계 규칙(게이트 G2) — 폐기됨:**
+- 원래 판정은 "레포 루트에 `agent/mcp/board/server.ts` **와** `agent/skills/tavlet-board-submit/SKILL.md` 가 **둘 다** 존재"였다. 후자가 `ff3fa1f` 에서 삭제되어 **이 조건은 영구히 거짓**이고, 핸드오프 대상(`/tav`)도 함께 사라졌다.
+- 따라서 tavlet 레포에서 실행하더라도 **핸드오프를 제안하지 않는다** — 이 스킬이 유일한 보드 등록 경로다.
+- 게이트 번호 G2는 하위 참조가 깨지지 않도록 **비워 둔 채 유지**한다. 새 게이트에 재사용하지 않는다.
+- 커밋 트레일러 `[tv:<taskId>]` 는 두 경로 공존을 위한 규약이었다. 현재 tavlet `CLAUDE.md` 에 기재가 없고 최근 커밋에도 쓰이지 않으므로 **요구하지 않는다.**
 
 ## 역할 분리
 
@@ -62,15 +68,13 @@ Planner · Generator · Evaluator는 **각각 별도의 `Agent` 호출**이며 *
 
 세 역할은 **사전 맥락이 0**인 별도 서브에이전트다. cwd는 이 스킬과 무관한 임의의 레포이고, 스킬 정본은 심링크(`~/.claude/skills/tavlet-tracker`)를 통해 열린다. **따라서 상대 경로 `references/…` 는 서브에이전트에게 해소되지 않는다.** 디스패치 전에 두 경로를 확정한다.
 
-**`SKILL_ROOT`** — 이 `SKILL.md`가 있는 디렉터리의 절대 경로. 정본:
+**`SKILL_ROOT`** — 이 `SKILL.md`가 있는 디렉터리의 절대 경로. 설치 위치는 사람마다 다르므로 **매 실행 해소한다:**
 
+```bash
+ls -l ~/.claude/skills/tavlet-tracker
 ```
-<WORKSPACE>/claude-utils/claude-skills/tavlet-tracker
-```
 
-`<WORKSPACE>` 는 이 저장소들을 체크아웃한 워크스페이스 디렉터리의 절대 경로다 — 각자의 환경 값으로 치환한다.
-
-확인 방법: `ls -l ~/.claude/skills/tavlet-tracker` — 심링크면 `->` 뒤가 `SKILL_ROOT`다. 심링크 경로를 그대로 넘겨도 되지만 **한 실행 안에서는 한 형태로 통일한다.**
+심링크면 `->` 뒤가 `SKILL_ROOT`다(정본은 https://github.com/greeun/tavlet-tracker 클론 경로). 심링크 경로를 그대로 넘겨도 되지만 **한 실행 안에서는 한 형태로 통일한다.**
 
 **`RUN_DIR`** — 이번 실행의 런 디렉터리. 실행마다 새로 만든다:
 
@@ -128,7 +132,7 @@ RUN_DIR    = <절대 경로>
 
 1. **진입.** `/tvl <요청>` 또는 트리거 문구. 요청이 "이 작업", "방금 그거" 류면 직전 대화 맥락을 재료로 삼는다. post URL이 오면 **마지막 세그먼트가 postId**다 (`/o/{org}/{ws}/{proj}/{boardId}/post/{postId}`). 여기서 **`SKILL_ROOT`·`RUN_DIR`을 먼저 확정한다**(앞 절). — `/tvl` 슬래시 커맨드는 `commands/tvl.md`를 `~/.claude/commands/tvl.md` 로 심링크했을 때만 존재한다. 없으면 트리거 문구로 진입하고, 설치는 `references/mcp-setup.md` §6으로 안내한다.
 2. **【G1】 MCP 연결 게이트.** `board_*` 도구가 세션에 존재하는지 확인한다. 없으면 `references/mcp-setup.md` 안내로 분기하고 **여기서 멈춘다 — 쓰기 경로에 진입하지 않는다.** 있으면 `board_list_boards()` 스모크 테스트로 토큰·연결을 실증한다.
-3. **【G2】 tavlet 레포 핸드오프 게이트.** 위 판정 조건(두 파일 동시 존재)이 참이면 `/tav`(S0) → S1 → S3 → S4 핸드오프를 제안하고 **사용자 확정 전 진행하지 않는다.**
+3. **【G2】 폐기 — 건너뛴다.** tavlet 레포 핸드오프 게이트였다. 판정 조건과 핸드오프 대상이 모두 `ff3fa1f` 에서 사라져 이 단계는 수행하지 않는다(위 「경계 규칙」).
 4. **【G3】 테넌트 확정 게이트.** `.tavlet.json` 로드(없으면 스키마대로 생성 제안 — gitignore 등재 확인 선행). 2단계의 `board_list_boards()` 반환에 대상 `boardId`가 **실재하는지** 대조하고 `baseUrl`·`boardVisibility`를 확정한다. **확정 전 쓰기 금지.**
 5. **세션 사실 수집.** 이 세션에서 **실제로 수행·관측된 것만** 모은다 — 변경 파일 경로(가능하면 `파일:라인`), `git log --oneline -n` / `git show --stat <hash>`로 확인한 커밋 해시, 실제 실행한 명령과 그 출력, 에러 원문. 확인하지 못한 것은 **"미검증"으로 분류**하고 삭제하지 않는다. **추정 금지.** 1차 스크럽(G7)을 여기서 수행한다.
 6. **【G4】 읽기 정찰 게이트.** `board_list_posts`를 **서로 다른 `q` 2회 이상** 호출하고 후보를 `board_get_post`로 본문 대조해 **신규/기존을 판정**한다. 필요에 따라 `board_get_taxonomy`(실제 카테고리·태그 id), `board_list_statuses`(실제 컬럼), `board_list_tasks`(현재 task 분포)를 조회한다. **이 정찰 없이 `board_create_post` 경로로 갈 수 없다.**
@@ -169,14 +173,14 @@ RUN_DIR    = <절대 경로>
 | # | 게이트 | 차단 조건 | 통과 조건 |
 |---|---|---|---|
 | **G1** | **MCP 연결** | `board_*` 도구가 세션에 없음 | `references/mcp-setup.md` 안내로 분기. **쓰기 경로 진입 금지.** 연결 후 `board_list_boards()` 스모크 테스트 성공 |
-| **G2** | **tavlet 레포 핸드오프** | 현재 세션이 tavlet 레포(또는 그 워크트리) | `/tav`(S0~S4) 핸드오프를 먼저 제안. 사용자가 "그래도 이 스킬로 진행"을 명시하기 전에는 진행 금지 |
+| ~~**G2**~~ | ~~tavlet 레포 핸드오프~~ | **폐기** — 판정 조건·핸드오프 대상이 tavlet `ff3fa1f` 에서 삭제됨 | 수행하지 않는다. 번호는 하위 참조 보호를 위해 비워 둔다 |
 | **G3** | **테넌트 확정** | 대상 org/board 미확정 | `.tavlet.json` 로드 또는 사용자 명시 + `board_list_boards()` 반환에 해당 boardId **실재 확인**. 확정 전 쓰기 금지 |
 | **G4** | **중복 정찰 선행** | `board_list_posts` 조회 없이 `board_create_post` 시도 | 서로 다른 `q` **2회 이상** 조회 + 후보를 `board_get_post`로 본문 대조 + "신규/기존" 판정 근거 기록 |
 | **G5** | **쓰기 승인 (human checkpoint · 대체 불가)** | 미리보기 없음 · 요약본 미리보기 · 승인 미수신 · 승인 후 인자 변경 | 쓰기 7종 각각에 대해 **전송될 정확한 인자 JSON + 대상 보드/URL**을 제시하고 명시 승인 수신 |
 | **G6** | **프로덕션·공개면 확인** | `baseUrl`이 localhost가 아님(= 프로덕션 `tavlet.io`) 또는 대상 보드가 **공개 가시성** | 미리보기에 "프로덕션 대상"·"외부 독자가 읽는 공개 보드" 경고를 명시하고 **별도 확인**을 받는다 |
 | **G7** | **비밀·개인정보 스크럽** | 초안 본문에 PAT(`tvl_`/`hhb_` 접두사)·`.env` 값·API 키·Bearer 토큰·개인 이메일·사용자 홈 절대경로·(공개 보드 대상 시) 미공개 내부 정보가 잔존 | 미리보기 **이전에** 스크럽 스캔을 수행하고 결과를 보고. 잔존 시 하드 FAIL |
 
-**G6·G7이 함께 필요한 이유:** 이 스킬은 세션의 **에러 원문·로그·명령 출력**을 그대로 보드 본문으로 옮긴다. 이 재료는 시크릿·토큰·개인정보를 자주 포함한다. 그리고 MCP `board_add_comment`는 `{ postId, body }` 만 노출한다 — **`internal`(팀 전용) 플래그가 없으므로 MCP 경유 댓글은 전부 공개 댓글이다**(근거: `server.ts` 도구 설명 "게시글에 댓글 작성(공개)", `board-client.ts:56-57` `addComment`가 `{ body }`만 전송. `src/lib/validation/posts.ts:47`에 `internal` 필드가 존재하지만 MCP 도구는 노출하지 않는다). 정본 보드 중 `M6Nz6bWCr2Ow`는 공개 로드맵이다. 스크럽 게이트 없이는 이 스킬이 유출 경로가 된다.
+**G6·G7이 함께 필요한 이유:** 이 스킬은 세션의 **에러 원문·로그·명령 출력**을 그대로 보드 본문으로 옮긴다. 이 재료는 시크릿·토큰·개인정보를 자주 포함한다. 그리고 MCP `board_add_comment`는 `{ postId, body }` 만 노출한다 — **`internal`(팀 전용) 플래그가 없으므로 MCP 경유 댓글은 전부 공개 댓글이다**(근거: 원격 `src/lib/mcp/board-tools.ts` 의 `board_add_comment` inputSchema 가 `{ postId, body }` 뿐이고 서비스에 `{ body }` 만 전달. stdio 판도 동일 — `server.ts` 도구 설명 "게시글에 댓글 작성(공개)", `board-client.ts:56-57`. `src/lib/validation/posts.ts:47`에 `internal` 필드가 존재하지만 MCP 도구는 노출하지 않는다). 정본 보드 중 `M6Nz6bWCr2Ow`는 공개 로드맵이다. 스크럽 게이트 없이는 이 스킬이 유출 경로가 된다.
 
 **보드 가시성은 어떤 `board_*` 도구도 반환하지 않는다.** `board_list_boards`가 주는 `kind`는 `FEATURE`·`BUG`·`FEEDBACK`(보드 종류)이지 공개 여부가 아니다. 공개 여부의 정본은 `.tavlet.json`의 `boardVisibility` 이며, 그 값이 없으면 **`PUBLIC`으로 간주(안전 측 기본값)** 하고 사용자에게 확인한다. 자세한 근거는 `references/board-tool-contract.md` §가시성.
 

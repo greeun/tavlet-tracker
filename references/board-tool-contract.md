@@ -4,8 +4,8 @@
 
 모든 값은 tavlet 체크아웃의 실제 소스에서 확인된 것이다. 근거 경로는 tavlet 레포 루트 기준.
 
-- 도구 등록: `agent/mcp/board/server.ts`
-- REST 클라이언트: `agent/mcp/board/board-client.ts`
+- 도구 등록(원격, 정규 경로): `src/lib/mcp/board-tools.ts` · 엔드포인트 `src/app/api/mcp/route.ts`
+- 도구 등록(로컬 stdio, 개발용): `agent/mcp/board/server.ts` + REST 클라이언트 `board-client.ts`
 - 검증 스키마: `src/lib/validation/posts.ts` · `post-tasks.ts` · `releases.ts` · `primitives.ts`
 - 보드 목록 DTO: `src/lib/services/agent-boards.ts`
 
@@ -15,37 +15,49 @@
 
 ## 0. 성공/실패 판정 — 가장 흔한 함정
 
-`server.ts:9-16`의 `wrap()`은 REST throw를 **예외로 전파하지 않는다.** 대신 이렇게 되돌린다:
+두 구현 모두 **오류를 예외로 전파하지 않는다.** 도구 결과 안에 담아 되돌린다:
 
 ```ts
+// 원격(board-tools.ts) — REST 와 같은 오류 봉투
+{ content: [{ type: "text", text: '{"ok":false,"error":"…","code":"…"}' }], isError: true }
+
+// 로컬 stdio(server.ts:9-16) — 예외 문자열 그대로
 catch (e) { return { content: [{ type: "text", text: String(e) }], isError: true }; }
 ```
 
 **따라서 도구가 텍스트를 되돌렸다는 사실만으로 성공으로 판단하면 안 된다.**
 
 **판정 규칙:**
-- 반환에 `isError: true` 가 있으면 → **실패**
-- 반환 텍스트가 `Error:` 로 시작하면 → **실패**
-- 반환 텍스트가 `[board] <숫자 status> <METHOD> <path>: <본문 앞 300자>` 패턴을 포함하면 → **실패** (근거: `board-client.ts:20`)
+- 반환에 `isError: true` 가 있으면 → **실패** (양쪽 공통, 가장 확실한 신호)
+- 파싱한 JSON이 `{"ok": false, …}` 이면 → **실패** (원격)
+- 반환 텍스트가 `Error:` 로 시작하면 → **실패** (stdio)
+- 반환 텍스트가 `[board] <숫자 status> <METHOD> <path>: <본문 앞 300자>` 패턴을 포함하면 → **실패** (stdio, 근거: `board-client.ts:20`)
 - 그 외에는 JSON 문자열이며 성공
 
 **실패 시:** 반환 원문을 **그대로** 표면화하고 후속 쓰기를 **취소**한다. 이미 실행된 쓰기와 취소된 쓰기를 분리해 보고한다.
 
-**전역 실패 모드 2종:**
-| 증상 | 원인 | 근거 |
+**전역 실패 모드:**
+| 증상 | 경로 | 원인 |
 |---|---|---|
-| `BOARD_TOKEN 미설정` | env `BOARD_TOKEN`이 MCP 서버 프로세스에 전달되지 않음 | `board-client.ts:9-10` |
-| `[board] 400 GET /api/agent/boards: 에이전트 토큰이 필요합니다.` | 토큰 없이(쿠키 세션으로) 에이전트 API 접근 | `src/lib/services/agent-boards.ts:26` |
+| HTTP 401 `AGENT_TOKEN_REQUIRED` | 원격 | Authorization 헤더가 없다 — MCP는 사람 세션 표면이 아니다 |
+| HTTP 401 `INVALID_API_TOKEN` | 원격 | PAT 가 무효(폐기·오타) |
+| `{"ok":false,…,"code":"TOKEN_SCOPE_DENIED"}` (403) | 원격 | 대상이 토큰 스코프 밖. 조회 도구는 READ, 쓰기 도구는 WRITE grant 를 요구한다 |
+| `BOARD_TOKEN 미설정` | stdio | env `BOARD_TOKEN`이 MCP 서버 프로세스에 전달되지 않음 (`board-client.ts:9-10`) |
+| `[board] 400 GET /api/agent/boards: 에이전트 토큰이 필요합니다.` | stdio | 토큰 없이(쿠키 세션으로) 에이전트 API 접근 (`agent-boards.ts:26`) |
 
 ---
 
-## 1. 환경변수
+## 1. 인증 · 환경변수
+
+**원격(정규 경로)** — env 없음. PAT 를 `Authorization: Bearer` 헤더로 넘긴다. 대상 테넌트는 **토큰 스코프만이** 정하며, 서버가 기본 보드를 고르는 경로는 존재하지 않는다 — `board_create_post` 의 `boardId` 는 필수 인자다.
+
+**로컬 stdio(개발용)** — env 3종:
 
 | 변수 | 기본값 | 역할 | 근거 |
 |---|---|---|---|
 | `BOARD_BASE_URL` | `http://localhost:18000` | REST 베이스. 뒤 슬래시는 제거됨 | `board-client.ts:4` |
 | `BOARD_TOKEN` | 없음 | PAT. **미설정이면 모든 호출이 throw** | `board-client.ts:5,10` |
-| `BOARD_DEFAULT_BOARD_ID` | 없음 | `board_create_post`에서 `boardId` 생략 시 대체 | `server.ts:46` |
+| `BOARD_DEFAULT_BOARD_ID` | 없음 | `board_create_post`에서 `boardId` 생략 시 대체 — **이 스킬은 쓰지 않는다**(게이트 G3) | `server.ts:46` |
 
 PAT 접두사: 신규 발급은 `tvl_`, 레거시 `hhb_`는 **검증 수용 전용**(신규 발급 없음). 두 접두사 모두 **스크럽 대상**이다.
 

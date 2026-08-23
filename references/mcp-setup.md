@@ -4,18 +4,13 @@
 
 tavlet은 4계층 테넌시(Organization → Workspace → Project → Board)를 가진 멀티테넌트 SaaS다. **org마다 PAT가 다르다.** 이 문서의 절차는 그 사실을 전제로 한다.
 
-이 문서에서 `<WORKSPACE>` 는 tavlet 및 claude-skills 저장소를 체크아웃한 워크스페이스 디렉터리의 절대 경로다 — 각자의 환경 값으로 치환한다.
-
 ---
 
 ## 0. 불변 규칙 3개
 
 1. **MCP 등록은 프로젝트(= org/보드) 단위로 분리한다.** org마다 PAT가 다르므로 user 스코프 단일 등록은 금지다 — 한 토큰으로 모든 org를 쓰려는 순간, 그 토큰이 커버하지 않는 보드에는 실패하고 커버하는 보드에는 **의도하지 않은 테넌트로 쓸 위험**이 생긴다.
 2. **토큰 값을 git 추적 파일에 절대 쓰지 않는다.** 파일에 쓰기 전 `git check-ignore -v <파일>` 로 무시 대상임을 **확인하고**, 확인되지 않으면 쓰지 않는다.
-3. **서버 경로는 tavlet 체크아웃의 절대 경로를 쓴다.** tavlet 레포의 `.mcp.json`은 상대 경로(`agent/mcp/board/server.ts`)이며 **그 레포 안에서만 유효하다.** 외부 레포에서는 반드시:
-   ```
-   <WORKSPACE>/tavlet/agent/mcp/board/server.ts
-   ```
+3. **원격 엔드포인트를 쓴다.** 정규 경로는 `https://tavlet.io/api/mcp`(Streamable HTTP)다. 로컬에 설치하거나 클론할 것이 없다. 로컬 stdio 서버(`agent/mcp/board/server.ts`)는 tavlet 저장소 접근 권한이 있는 개발자의 개발용 경로이며, 이 스킬의 전제가 아니다.
 
 ---
 
@@ -23,84 +18,69 @@ tavlet은 4계층 테넌시(Organization → Workspace → Project → Board)를
 
 | 항목 | 확인 방법 |
 |---|---|
-| tavlet 체크아웃 존재 | 위 절대 경로의 `server.ts` 가 실재하는가 |
-| `npx tsx` 실행 가능 | Node 설치 여부. `npx --yes tsx --version` |
+| tavlet.io 계정 | https://tavlet.io 가입. 대상 org의 멤버여야 한다 |
 | PAT 발급 | tavlet 콘솔 → API 토큰. 신규 접두사는 `tvl_`. 대상 보드에 **WRITE grant**가 포함되어야 한다 |
 | 대상 boardId | 보드 피드 URL `/o/{org}/{ws}/{proj}/{boardId}` 의 **마지막 세그먼트** |
+
+Node·클론·빌드는 필요 없다 — 서버는 tavlet.io 가 운영한다.
 
 PAT 접두사 `tvl_`(신규) · `hhb_`(레거시, 검증 수용 전용). **두 접두사 모두 스크럽 대상 문자열이다** — 초안 본문·로그·설정 예시 어디에도 실제 값을 남기지 않는다.
 
 ---
 
-## 2. 등록 방식 3안
+## 2. 등록 방식
 
-셋 중 하나를 고른다. **어느 안이든 마지막에 §4 스모크 테스트로 실증한다.**
+### A안 — `claude mcp add` (권장)
 
-> 아래 문법(특히 `${VAR}` 환경변수 치환과 `claude mcp add` 의 `--scope` 플래그)은 Claude Code 버전에 따라 다를 수 있다. **문법이 맞다고 단정하지 말고, 스모크 테스트 통과 여부로 판정한다.** 실패하면 §5 진단 분기로 간다.
+```bash
+claude mcp add tavlet \
+  --transport http \
+  --scope local \
+  --header "Authorization: Bearer $TAVLET_BOARD_TOKEN_TAVLET_IO" \
+  https://tavlet.io/api/mcp
+```
 
-### A안 — 프로젝트 `.mcp.json` + 환경변수 참조 (권장, 팀 공유 가능)
+- `--scope local`(이 프로젝트에서 나만) 또는 `--scope project`(레포에 `.mcp.json` 생성 — 이 경우 B안의 gitignore·환경변수 규칙이 선행 조건이 된다).
+- 토큰은 셸 환경변수로 넘긴다. 값을 명령줄에 직접 쓰면 **셸 히스토리에 남는다.**
+- **org마다 변수명을 분리한다** — `TAVLET_BOARD_TOKEN_TAVLET_IO`, `TAVLET_BOARD_TOKEN_<다른ORG>`. 같은 변수명을 재사용하면 어느 org의 토큰이 실려 있는지 알 수 없게 되고, 그것이 테넌트 오등록의 출발점이다.
+- 플래그 이름이 다르면 `claude mcp add --help` 로 현재 버전의 문법을 확인한다. **문법이 맞다고 단정하지 말고 §4 스모크 테스트로 판정한다.**
+- 등록 확인: `claude mcp list`
 
-프로젝트 루트 `.mcp.json`(git 추적)에 서버를 정의하되 **토큰은 환경변수 참조로만** 둔다.
+### B안 — 프로젝트 `.mcp.json` (팀 공유)
 
 ```json
 {
   "mcpServers": {
-    "board": {
-      "command": "npx",
-      "args": ["--yes", "tsx", "<WORKSPACE>/tavlet/agent/mcp/board/server.ts"],
-      "env": {
-        "BOARD_BASE_URL": "https://tavlet.io",
-        "BOARD_TOKEN": "${TAVLET_BOARD_TOKEN_TAVLET_IO}",
-        "BOARD_DEFAULT_BOARD_ID": "xnUwXGnBK4E2"
+    "tavlet": {
+      "type": "http",
+      "url": "https://tavlet.io/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TAVLET_BOARD_TOKEN_TAVLET_IO}"
       }
     }
   }
 }
 ```
 
-- `BOARD_DEFAULT_BOARD_ID` 는 **편의값일 뿐 테넌트 확정을 대체하지 않는다.** 이 값은 `board_create_post` 에서 `boardId` 를 생략했을 때만 쓰이는 fallback 이며(`server.ts:46`), 대상 보드를 **조용히** 정하는 경로다. 이 스킬은 그 경로를 쓰지 않는다 — 게이트 **G3**(테넌트 확정)은 매 실행마다 `board_list_boards()` 반환에 대상 boardId 가 실재함을 확인하도록 요구하고, 승인 미리보기의 `board_create_post` JSON에는 **언제나 명시 `boardId` 가 실린다**(SKILL.md 「쓰기 도구 7종 × 승인 게이트 배치」 1행). env 값은 그 확인의 근거가 되지 못한다.
-- 실제 토큰 값은 셸 환경변수 또는 gitignore된 로컬 env 파일에만 둔다.
-- **org마다 변수명을 분리한다** — `TAVLET_BOARD_TOKEN_TAVLET_IO`, `TAVLET_BOARD_TOKEN_<다른ORG>`. 같은 변수명을 재사용하면 어느 org의 토큰이 실려 있는지 알 수 없게 되고, 그것이 테넌트 오등록의 출발점이다.
-- 환경변수 치환이 동작하지 않으면(= 스모크 테스트에서 `BOARD_TOKEN 미설정`) B안이나 C안으로 간다.
+- **토큰 값을 파일에 지정하지 않는다.** 환경변수 참조만 둔다 — 그래야 이 파일을 git으로 공유할 수 있다.
+- 환경변수 치환이 동작하지 않으면(= 스모크 테스트가 401) A안으로 전환한다.
+- 값을 직접 지정해야 한다면 **먼저** gitignore 등재를 확인한다:
+  ```bash
+  printf '\n.mcp.json\n' >> .gitignore
+  git check-ignore -v .mcp.json   # 매칭 줄이 나와야 토큰을 쓴다
+  ```
 
-### B안 — `claude mcp add` (비공유, 가장 안전)
+### C안 — 로컬 stdio (tavlet 개발자 전용)
 
-설정을 레포 밖에 두어 **레포에 아무 파일도 남기지 않는다.**
-
-```bash
-claude mcp add board \
-  --scope local \
-  --env BOARD_BASE_URL=https://tavlet.io \
-  --env BOARD_TOKEN=<PAT> \
-  --env BOARD_DEFAULT_BOARD_ID=xnUwXGnBK4E2 \
-  -- npx --yes tsx <WORKSPACE>/tavlet/agent/mcp/board/server.ts
-```
-
-- `--scope local`(이 프로젝트에서 나만) 또는 `--scope project`(레포에 `.mcp.json` 생성 — 이 경우 토큰이 파일에 들어가므로 C안의 gitignore 확인이 선행 조건이 된다).
-- 플래그 이름이 다르면 `claude mcp add --help` 로 현재 버전의 문법을 확인한다. **셸 히스토리에 토큰이 남는다는 점을 감안한다** — 필요하면 변수로 넘긴다.
-- 등록 확인: `claude mcp list`
-
-### C안 — `.mcp.json` 자체를 gitignore (레포가 공유 대상이 아닐 때)
-
-`.mcp.json`에 토큰을 직접 지정하되, **선행 조건**을 반드시 먼저 만족시킨다.
-
-```bash
-# 1) gitignore 등재
-printf '\n.mcp.json\n' >> .gitignore
-
-# 2) 확인 — 이 명령이 매칭 줄을 출력해야만 다음 단계로 간다
-git check-ignore -v .mcp.json
-```
-
-`git check-ignore -v` 가 아무것도 출력하지 않으면 **토큰을 쓰지 않는다.** 출력이 나온 뒤에야 A안의 JSON에서 `"BOARD_TOKEN"` 값을 실제 PAT로 바꾼다.
+tavlet 저장소를 체크아웃해 개발 중이고 `http://localhost:18000` 을 대상으로 삼을 때만 쓴다. 절차는 tavlet 레포 `docs/api-reference.md` §7.2. 이 경우 `BOARD_DEFAULT_BOARD_ID` env 로 기본 보드를 두는 경로가 남아 있는데, **이 스킬은 그 경로를 쓰지 않는다** — 게이트 **G3**(테넌트 확정)은 매 실행마다 `board_list_boards()` 반환에 대상 boardId 가 실재함을 확인하도록 요구하고, 승인 미리보기의 `board_create_post` JSON에는 **언제나 명시 `boardId` 가 실린다**. 원격판(A·B안)에는 그 fallback 자체가 없고 `boardId` 가 필수 인자다.
 
 ### 어느 안을 고를까
 
 | 상황 | 안 |
 |---|---|
-| 팀과 공유하는 레포이고 각자 자기 토큰을 쓴다 | **A** |
-| 레포에 흔적을 남기고 싶지 않다 / 개인 작업 | **B** |
-| 개인 레포이고 환경변수 관리가 번거롭다 | **C** (gitignore 확인 필수) |
+| 대부분 | **A** |
+| 팀과 공유하는 레포이고 각자 자기 토큰을 쓴다 | **B** |
+| tavlet 자체를 개발 중이고 로컬 서버를 본다 | **C** |
 | org가 여러 개다 | 프로젝트마다 위 중 하나를 **따로** — 하나의 등록을 여러 org에 재사용하지 않는다 |
 
 ---
@@ -167,12 +147,13 @@ git check-ignore -v .tavlet.json   # 매칭 줄이 나와야 생성한다
 | 증상 | 원인 | 조치 |
 |---|---|---|
 | `board_*` 도구가 세션에 아예 없다 | 등록이 안 됐거나 세션 재시작 전 | `claude mcp list` 로 등록 확인 → 세션 재시작. `.mcp.json` JSON 문법 오류도 흔한 원인이다 |
-| 반환이 `BOARD_TOKEN 미설정` | env가 MCP 서버 프로세스에 전달되지 않음 | A안의 `${VAR}` 치환이 동작하지 않는 경우가 대부분. B안(`--env`)이나 C안(직접 지정 + gitignore 확인)으로 전환 |
-| `[board] 401 ...` / `[board] 403 ...` | 토큰이 무효하거나 그 경로가 토큰 스코프 밖 | PAT 재발급 또는 스코프에 대상 보드 WRITE grant 추가 |
-| `[board] 400 GET /api/agent/boards: 에이전트 토큰이 필요합니다.` | 토큰 없이(쿠키 세션으로) 에이전트 API 접근 | `BOARD_TOKEN` 을 설정한다 |
+| 연결 자체가 401 | Authorization 헤더가 전달되지 않았거나 토큰이 무효 | B안의 `${VAR}` 치환이 동작하지 않는 경우가 대부분 — A안으로 전환. 401 `AGENT_TOKEN_REQUIRED` 는 헤더가 아예 없다는 뜻이다 |
+| 도구 결과가 `INVALID_API_TOKEN` | PAT 가 무효(폐기·오타) | 콘솔에서 재발급 |
+| 도구 결과가 403 `TOKEN_SCOPE_DENIED` | 그 대상이 토큰 스코프 밖 | 스코프에 대상 보드 grant 추가. 조회 도구는 READ, 쓰기 도구는 WRITE 를 요구한다 |
 | 목록이 **빈 배열** | 이 토큰이 쓸 수 있는 보드가 하나도 없다 | 토큰 스코프에 WRITE grant를 추가한다. **쓰기 경로로 진행하지 않는다** |
 | 목록에 대상 boardId가 **없다** | 그 토큰은 이 보드에 쓸 권한이 없다 (다른 org PAT일 가능성) | 목록에 있는 보드 중에서 고르거나, 올바른 org PAT로 **MCP를 재등록**한다. **여기서 멈춘다** — 이 상태로 진행하면 테넌트 오등록이다 |
-| 연결은 되는데 `baseUrl` 이 localhost | 로컬 개발 서버를 보고 있다 | 의도한 것이면 그대로. 프로덕션 등록이 목적이면 `BOARD_BASE_URL=https://tavlet.io` 로 고친다 |
+| 연결은 되는데 대상이 localhost | C안(로컬 stdio)으로 등록돼 있다 | 의도한 것이면 그대로. 프로덕션이 목적이면 A안으로 재등록한다 |
+| `GET`/`DELETE` 가 405 | 원격 엔드포인트는 stateless — 세션 기반 표면을 지원하지 않는다 | 정상 동작이다. 도구 호출은 전부 `POST` 로 이뤄진다 |
 
 **어떤 경우에도 REST를 직접 호출하거나 우회 스크립트를 만들지 않는다.** 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다.
 
@@ -180,14 +161,14 @@ git check-ignore -v .tavlet.json   # 매칭 줄이 나와야 생성한다
 
 ## 6. 스킬 배포 (심링크)
 
-정본은 이 저장소 안의 스킬 폴더다. `~/.claude/` 에는 **복사본이 아니라 심링크**를 둔다 — 복사본은 정본과 조용히 갈라진다.
+정본은 https://github.com/greeun/tavlet-tracker 다. `~/.claude/` 에는 **복사본이 아니라 심링크**를 둔다 — 복사본은 정본과 조용히 갈라진다.
 
 ```bash
-ln -s "<WORKSPACE>/claude-utils/claude-skills/tavlet-tracker" \
-      ~/.claude/skills/tavlet-tracker
+git clone https://github.com/greeun/tavlet-tracker.git
+cd tavlet-tracker
 
-ln -s "<WORKSPACE>/claude-utils/claude-skills/tavlet-tracker/commands/tvl.md" \
-      ~/.claude/commands/tvl.md
+ln -s "$(pwd)" ~/.claude/skills/tavlet-tracker
+ln -s "$(pwd)/commands/tvl.md" ~/.claude/commands/tvl.md
 ```
 
 확인:
@@ -196,6 +177,4 @@ ln -s "<WORKSPACE>/claude-utils/claude-skills/tavlet-tracker/commands/tvl.md" \
 ls -l ~/.claude/skills/tavlet-tracker ~/.claude/commands/tvl.md
 ```
 
-두 심링크가 정본 경로를 가리키면 배포 완료다. 이후 `/tvl` 슬래시 커맨드와 스킬 자동 활성화가 모두 동작한다.
-
-> 목적지 저장소(`claude-utils/claude-skills`)는 git 저장소가 아니므로 워크트리 격리를 쓸 수 없다. 산출물을 해당 경로에 직접 생성한다.
+두 심링크가 클론 경로를 가리키면 배포 완료다. 이후 `/tvl` 슬래시 커맨드와 스킬 자동 활성화가 모두 동작한다. 갱신은 `git pull` 이면 된다 — 심링크라 별도 재배포가 없다.
