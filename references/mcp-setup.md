@@ -33,16 +33,16 @@ PAT 접두사 `tvl_`(신규) · `hhb_`(레거시, 검증 수용 전용). **두 �
 ### A안 — `claude mcp add` (권장)
 
 ```bash
-claude mcp add tavlet \
-  --transport http \
-  --scope local \
-  --header "Authorization: Bearer $TAVLET_BOARD_TOKEN_TAVLET_IO" \
-  https://tavlet.io/api/mcp
+claude mcp add --transport http --scope local \
+  tavlet https://tavlet.io/api/mcp \
+  --header "Authorization: Bearer $TAVLET_BOARD_TOKEN_<ORG>"
 ```
 
 - `--scope local`(이 프로젝트에서 나만) 또는 `--scope project`(레포에 `.mcp.json` 생성 — 이 경우 B안의 gitignore·환경변수 규칙이 선행 조건이 된다).
 - 토큰은 셸 환경변수로 넘긴다. 값을 명령줄에 직접 쓰면 **셸 히스토리에 남는다.**
-- **org마다 변수명을 분리한다** — `TAVLET_BOARD_TOKEN_TAVLET_IO`, `TAVLET_BOARD_TOKEN_<다른ORG>`. 같은 변수명을 재사용하면 어느 org의 토큰이 실려 있는지 알 수 없게 되고, 그것이 테넌트 오등록의 출발점이다.
+- **org마다 변수명을 분리한다** — `TAVLET_BOARD_TOKEN_<ORG>` 형태로 org 별 변수를 따로 둔다(`<ORG>` 는 대상 org slug 를 대문자·언더스코어로 옮긴 값). 같은 변수명을 재사용하면 어느 org의 토큰이 실려 있는지 알 수 없게 되고, 그것이 테넌트 오등록의 출발점이다.
+- ⚠️ **`--header` 는 가변 인자다 — 반드시 명령의 맨 끝에 둔다.** URL 앞에 두면 뒤따르는 URL 까지 헤더 값으로 삼켜
+  `error: missing required argument 'commandOrUrl'` 로 실패한다(2026-08-27 실측). 인자 순서는 `add [options] <name> <url> --header ...`.
 - 플래그 이름이 다르면 `claude mcp add --help` 로 현재 버전의 문법을 확인한다. **문법이 맞다고 단정하지 말고 §4 스모크 테스트로 판정한다.**
 - 등록 확인: `claude mcp list`
 
@@ -55,7 +55,7 @@ claude mcp add tavlet \
       "type": "http",
       "url": "https://tavlet.io/api/mcp",
       "headers": {
-        "Authorization": "Bearer ${TAVLET_BOARD_TOKEN_TAVLET_IO}"
+        "Authorization": "Bearer ${TAVLET_BOARD_TOKEN_<ORG>}"
       }
     }
   }
@@ -93,8 +93,8 @@ tavlet `CLAUDE.md:16-17`은 "등록 대상 보드는 `.tavlet.json`(gitignore, �
 {
   "baseUrl": "https://tavlet.io",        // 필수. localhost 가 아니면 G6 프로덕션 경고 발동
   "org": "<org-slug>",                   // 필수. URL 조립 + 테넌트 식별 (org SLUG)
-  "workspace": "default",                // 필수. URL 조립 (workspace SLUG)
-  "project": "default",                  // 필수. project SLUG — projectId 가 아니다
+  "workspace": "<workspace-slug>",       // 필수. URL 조립 (workspace SLUG)
+  "project": "<project-slug>",           // 필수. project SLUG — projectId 가 아니다
   "projectId": "<board_list_boards.projectId>", // 선택. 릴리스 도구용 DB id.
                                          //   없으면 실행 시 board_list_boards 로 해소하고 기록을 제안
   "boardId": "<boardId>",                // 필수. 기본 등록 대상 — board_list_boards() 반환값에서 고른다

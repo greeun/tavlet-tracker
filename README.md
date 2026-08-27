@@ -36,13 +36,11 @@ Claude Code 세션에서 **실제로 수행한 개발 작업**을 [tavlet](https
 tavlet.io 가입 후 콘솔에서 PAT(개인 액세스 토큰)를 발급받는다. 대상 보드에 **WRITE grant**가 포함되어야 한다.
 
 ```bash
-export TAVLET_BOARD_TOKEN_TAVLET_IO="tvl_..."
+export TAVLET_BOARD_TOKEN_<ORG>="tvl_..."
 
-claude mcp add tavlet \
-  --transport http \
-  --scope local \
-  --header "Authorization: Bearer $TAVLET_BOARD_TOKEN_TAVLET_IO" \
-  https://tavlet.io/api/mcp
+claude mcp add --transport http --scope local \
+  tavlet https://tavlet.io/api/mcp \
+  --header "Authorization: Bearer $TAVLET_BOARD_TOKEN_<ORG>"
 ```
 
 로컬에 설치하거나 클론할 것은 없다 — 서버는 tavlet.io 가 운영한다.

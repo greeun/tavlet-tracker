@@ -73,10 +73,10 @@ PAT 접두사: 신규 발급은 `tvl_`, 레거시 `hhb_`는 **검증 수용 전�
     "boardId": "<boardId>",
     "projectId": "<DB id>",              // ← 릴리스 도구의 projectId 인자는 여기서 해소한다
     "kind": "FEATURE",                   // FEATURE | BUG | FEEDBACK — 공개 여부가 아니다
-    "name": "내부 작업",
-    "org":       { "slug": "<org-slug>", "name": "..." },
-    "workspace": { "slug": "default",   "name": "..." },
-    "project":   { "slug": "default",   "name": "..." },
+    "name": "<보드명>",
+    "org":       { "slug": "<org-slug>",       "name": "..." },
+    "workspace": { "slug": "<workspace-slug>", "name": "..." },
+    "project":   { "slug": "<project-slug>",   "name": "..." },
     "url": "/o/{orgSlug}/{wsSlug}/{projSlug}/{boardId}"
 } ] }
 ```
