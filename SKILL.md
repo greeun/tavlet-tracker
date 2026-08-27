@@ -1,12 +1,12 @@
 ---
 name: tavlet-tracker
 description: 임의의 Claude Code 세션(어느 레포에서든)에서 수행한 작업을 tavlet 피드백 보드에 MCP board 서버 도구 14종으로 등록·추적한다 — 기존 post 중복 탐색 → post 등록 → task 분해·상태 갱신 → 증거 기반 세션 다이제스트 댓글 → post 상태 전이 → 분류/중복 제안 → 릴리스 초안까지 전체 라이프사이클. 모든 쓰기는 정확한 인자 미리보기 + 사용자 명시 승인 게이트를 거치고, Planner→Generator→Evaluator 하네스가 등록 전 초안의 증거 구체성(파일 경로·커밋 해시·명령 출력)과 세션 사실성(환각 금지)을 적대적으로 심사한다. 멀티테넌트이므로 MCP 등록은 프로젝트 단위로 분리한다. 트리거 — KO "tavlet 등록", "보드에 올려", "작업 기록", "tvl", "타블렛 보드", "보드에 기록", "post 등록", "task 상태 갱신", "세션 결과 보드 반영", "릴리스 초안". EN "tavlet", "log work to tavlet", "track work on tavlet board", "register post on tavlet board".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # tavlet-tracker
 
-이 세션에서 **실제로 수행한 개발 작업**을 tavlet 피드백 보드에 등록·추적한다. 접근 경로는 MCP 서버가 노출하는 **도구 14종**뿐이다(정규 경로는 원격 `https://tavlet.io/api/mcp`, 등록은 `references/mcp-setup.md`). REST를 직접 호출하거나 별도 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다.
+이 세션에서 **실제로 수행한 개발 작업**을 tavlet 피드백 보드에 등록·추적한다. 접근 경로는 MCP 서버가 노출하는 **도구 14종**뿐이다(정규 경로는 원격 `https://tavlet.io/api/mcp`, 등록은 `references/mcp-setup.md`). REST를 직접 호출하거나 **보드에 접근하는** 별도 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다. **보드에 접근하지 않고 초안 텍스트만 읽는 검증기는 여기 해당하지 않는다** — `scripts/validate_drafts.py` 가 유일한 예외이며, 네트워크도 `board_*` 호출도 없는 읽기 전용이다. 이 구분의 기준은 "스크립트인가"가 아니라 **"부작용을 낼 수 있는가"** 다.
 
 모든 쓰기는 프로덕션 `tavlet.io`에 대한 **되돌리기 어려운 부작용**이고, 대상 보드 중 일부는 **외부 독자가 읽는 공개 면**이다. 그래서 이 스킬의 하네스는 "더 나은 글"이 아니라 **"등록해도 되는 글"** 을 만든다.
 
@@ -57,8 +57,8 @@ Planner · Generator · Evaluator는 **각각 별도의 `Agent` 호출**이며 *
 | 역할 | 프롬프트 | 입력 | 산출 | 도구 권한 |
 |---|---|---|---|---|
 | **Planner** | `references/planner-prompt.md` | 세션 사실 목록 + 정찰 결과 | `spec.md` — 보드 변경 계획 | 읽기 7종 + 로컬 파일·`git` |
-| **Generator** | `references/generator-prompt.md` | `spec.md` (+ 재시도 시 `critique_v<n-1>.md` · 승인된 PIVOT 이면 `design_memo_v<n-1>.md` · 리셋 이어받기면 그 라운드의 `handoff_v<n>*.md` **전부**) | `drafts_v<n>.md` + `generator_report_v<n>.md` | 읽기 7종 + 로컬 파일·`git`. **쓰기 7종 호출 금지** |
-| **Evaluator** | `references/evaluator-prompt.md` | `spec.md` + `drafts_v<n>.md` + `generator_report_v<n>.md` (+ 2라운드부터 `critique_v<n-1>.md` · `drafts_v<n-1>.md`) | `critique_v<n>.md` (PASS/FAIL) | 읽기 7종 + 로컬 파일·`git`. **쓰기 7종 호출 금지** |
+| **Generator** | `references/generator-prompt.md` | `spec.md` (+ 재시도 시 `critique_v<n-1>.md` · 승인된 PIVOT 이면 `design_memo_v<n-1>.md` · 리셋 이어받기면 그 라운드의 `handoff_v<n>*.md` **전부**) | `drafts_v<n>.md` + `generator_report_v<n>.md` | 읽기 7종 + 로컬 파일·`git` + `scripts/validate_drafts.py` 실행. **쓰기 7종 호출 금지** |
+| **Evaluator** | `references/evaluator-prompt.md` | `spec.md` + `drafts_v<n>.md` + `generator_report_v<n>.md` (+ 2라운드부터 `critique_v<n-1>.md` · `drafts_v<n-1>.md`) | `critique_v<n>.md` (PASS/FAIL) | 읽기 7종 + 로컬 파일·`git` + `scripts/validate_drafts.py` 실행. **쓰기 7종 호출 금지** |
 
 **쓰기 7종을 실제로 호출하는 것은 오케스트레이터(이 스킬을 실행하는 메인 세션)뿐이며, 사용자 승인 이후에만이다.**
 
@@ -101,6 +101,7 @@ RUN_DIR    = <절대 경로>
 - {SKILL_ROOT}/references/board-tool-contract.md      (Planner · Generator · Evaluator)
 - {SKILL_ROOT}/references/rubric.md                   (Generator · Evaluator)
 - {SKILL_ROOT}/references/evaluator-calibration.md    (Evaluator)
+- {SKILL_ROOT}/scripts/validate_drafts.py             (Generator · Evaluator — 읽고 **실행한다**. 읽기 전용)
 - {RUN_DIR}/spec.md                                   (Generator · Evaluator)
 - {RUN_DIR}/drafts_v<n>.md                            (Evaluator)
 - {RUN_DIR}/generator_report_v<n>.md                  (Evaluator)
@@ -128,7 +129,7 @@ RUN_DIR    = <절대 경로>
 
 ## 활성화 흐름
 
-**12단계. 이터레이션 상한 = 5–15 라운드(범위. 단일 값으로 고정하지 않는다).**
+**12단계. 이터레이션 상한 = 2 라운드.** PASS 는 상한과 무관하게 **즉시 탈출**이며 최소 라운드 규정은 없다 — **1라운드 PASS 가 정상 경로다.** 근거는 아래 「이터레이션 지혜」.
 
 1. **진입.** `/tvl <요청>` 또는 트리거 문구. 요청이 "이 작업", "방금 그거" 류면 직전 대화 맥락을 재료로 삼는다. post URL이 오면 **마지막 세그먼트가 postId**다 (`/o/{org}/{ws}/{proj}/{boardId}/post/{postId}`). 여기서 **`SKILL_ROOT`·`RUN_DIR`을 먼저 확정한다**(앞 절). — `/tvl` 슬래시 커맨드는 `commands/tvl.md`를 `~/.claude/commands/tvl.md` 로 심링크했을 때만 존재한다. 없으면 트리거 문구로 진입하고, 설치는 `references/mcp-setup.md` §6으로 안내한다.
 2. **【G1】 MCP 연결 게이트.** `board_*` 도구가 세션에 존재하는지 확인한다. 없으면 `references/mcp-setup.md` 안내로 분기하고 **여기서 멈춘다 — 쓰기 경로에 진입하지 않는다.** 있으면 `board_list_boards()` 스모크 테스트로 토큰·연결을 실증한다.
@@ -137,9 +138,9 @@ RUN_DIR    = <절대 경로>
 5. **세션 사실 수집.** 이 세션에서 **실제로 수행·관측된 것만** 모은다 — 변경 파일 경로(가능하면 `파일:라인`), `git log --oneline -n` / `git show --stat <hash>`로 확인한 커밋 해시, 실제 실행한 명령과 그 출력, 에러 원문. 확인하지 못한 것은 **"미검증"으로 분류**하고 삭제하지 않는다. **추정 금지.** 1차 스크럽(G7)을 여기서 수행한다.
 6. **【G4】 읽기 정찰 게이트.** `board_list_posts`를 **서로 다른 `q` 2회 이상** 호출하고 후보를 `board_get_post`로 본문 대조해 **신규/기존을 판정**한다. 필요에 따라 `board_get_taxonomy`(실제 카테고리·태그 id), `board_list_statuses`(실제 컬럼), `board_list_tasks`(현재 task 분포)를 조회한다. **이 정찰 없이 `board_create_post` 경로로 갈 수 없다.**
 7. **Planner 디스패치** (`Agent`, `{SKILL_ROOT}/references/planner-prompt.md`) — 프롬프트 앞에 **디스패치 주입 블록**을 붙이고 5·6단계 결과를 함께 전달 → `{RUN_DIR}/spec.md`(보드 변경 계획). `NEED_EVIDENCE`가 오면 사용자에게 그 증거를 요청하고 5단계로 되돌아간다. `BLOCKED: <경로>`가 오면 **경로를 고쳐 재디스패치**한다.
-8. **Generator 디스패치** (`Agent`, `{SKILL_ROOT}/references/generator-prompt.md`) — 주입 블록 + `{RUN_DIR}/spec.md` → `{RUN_DIR}/drafts_v<n>.md` + `{RUN_DIR}/generator_report_v<n>.md`. **단일 연속 세션(스프린트 없음). 쓰기 도구 호출 없음.** `HANDOFF_NEEDED: <handoff 파일명>`이 오면 **새 Generator 세션**을 띄운다(압축 금지). **그 라운드의 handoff 파일을 전부, 생성 순서대로 넘긴다** — 주입 블록 읽을-파일 목록에 각각의 절대 경로를 올려 디스패치한다. 두 번째 리셋의 `handoff_v<n>b.md`는 첫 번째를 **대체하지 않는다**: 앞 파일에만 있는 완성 초안 목록이 누락되면 새 세션이 그 초안을 다시 쓴다. 이 시점에는 쓰기가 아직 한 건도 실행되지 않았으므로 handoff 에 **실행 기록은 없다** — 그것은 12단계 `execution_state.md`의 소관이다. `BLOCKED`도 같은 처리 — 경로를 고쳐 재디스패치.
-9. **Evaluator 디스패치** (`Agent`, `{SKILL_ROOT}/references/evaluator-prompt.md`) — 주입 블록 + `spec.md` + `drafts_v<n>.md` + `generator_report_v<n>.md` → 적대적 프로브 7종 실행 → `{RUN_DIR}/critique_v<n>.md`(PASS/FAIL). Evaluator는 읽기 도구만 쓴다. `BLOCKED`가 오면 **그 라운드의 채점을 채택하지 않는다** — 루브릭·앵커를 못 읽은 채점은 보정되지 않은 채점이다.
-10. **루프 제어.** PASS → 11단계. FAIL이고 라운드 < 상한 → `critique_v<n>.md`를 넘겨 8단계로(Strategic Decision: REFINE / PIVOT / ESCALATE). `REDIRECT:` 나 `design_memo_v<n>.md`가 있으면 피벗 전에 승인하거나 수정하고, **승인한 메모의 절대 경로를 다음 라운드 주입 블록에 올려 넘긴다**(다음 라운드 관점의 이름은 `design_memo_v<n-1>.md`다). 넘기지 않으면 다음 라운드 Generator 는 승인 사실을 모른 채 방향 전환 금지 하드룰에 걸린다. **이전 라운드의 `critique_v*.md`·`drafts_v*.md`를 지우거나 덮어쓰지 않는다** — 최선 라운드 판정의 근거다. **상한 5–15를 지키되 점수가 여전히 오르는 중이면 5에서 반사적으로 멈추지 않는다.** `DEADLOCK`이면 사용자에게 증거 보강 또는 스펙 판단을 요청하고 멈춘다.
+8. **Generator 디스패치** (`Agent`, `{SKILL_ROOT}/references/generator-prompt.md`) — 주입 블록 + `{RUN_DIR}/spec.md` → `{RUN_DIR}/drafts_v<n>.md` + `{RUN_DIR}/generator_report_v<n>.md`. **단일 연속 세션(스프린트 없음). 쓰기 도구 호출 없음.** **제출 전 `{SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md` 를 돌려 ERROR 0 을 만든 뒤에야 제출한다** — 계약·길이·enum·누출·좌표 카운트는 결정론적으로 판정되므로 Evaluator 까지 끌고 가지 않는다. `HANDOFF_NEEDED: <handoff 파일명>`이 오면 **새 Generator 세션**을 띄운다(압축 금지). **그 라운드의 handoff 파일을 전부, 생성 순서대로 넘긴다** — 주입 블록 읽을-파일 목록에 각각의 절대 경로를 올려 디스패치한다. 두 번째 리셋의 `handoff_v<n>b.md`는 첫 번째를 **대체하지 않는다**: 앞 파일에만 있는 완성 초안 목록이 누락되면 새 세션이 그 초안을 다시 쓴다. 이 시점에는 쓰기가 아직 한 건도 실행되지 않았으므로 handoff 에 **실행 기록은 없다** — 그것은 12단계 `execution_state.md`의 소관이다. `BLOCKED`도 같은 처리 — 경로를 고쳐 재디스패치.
+9. **Evaluator 디스패치** (`Agent`, `{SKILL_ROOT}/references/evaluator-prompt.md`) — 주입 블록 + `spec.md` + `drafts_v<n>.md` + `generator_report_v<n>.md` → 적대적 프로브 5종 실행 → `{RUN_DIR}/critique_v<n>.md`(PASS/FAIL). Evaluator는 읽기 도구와 `scripts/validate_drafts.py`(읽기 전용)만 쓴다. `BLOCKED`가 오면 **그 라운드의 채점을 채택하지 않는다** — 루브릭·앵커를 못 읽은 채점은 보정되지 않은 채점이다.
+10. **루프 제어.** PASS → 11단계. FAIL이고 라운드 < 상한 → `critique_v<n>.md`를 넘겨 8단계로(Strategic Decision: REFINE / PIVOT / ESCALATE). `REDIRECT:` 나 `design_memo_v<n>.md`가 있으면 피벗 전에 승인하거나 수정하고, **승인한 메모의 절대 경로를 다음 라운드 주입 블록에 올려 넘긴다**(다음 라운드 관점의 이름은 `design_memo_v<n-1>.md`다). 넘기지 않으면 다음 라운드 Generator 는 승인 사실을 모른 채 방향 전환 금지 하드룰에 걸린다. **이전 라운드의 `critique_v*.md`·`drafts_v*.md`를 지우거나 덮어쓰지 않는다** — 최선 라운드 판정의 근거다. **상한은 2다** — 2라운드에서도 PASS 가 아니면 더 돌리지 않고 12단계의 최선 라운드 보고 경로로 간다. `DEADLOCK`이면 사용자에게 증거 보강 또는 스펙 판단을 요청하고 멈춘다.
 11. **【G5·G6·G7】 승인 게이트 — 필수·대체 불가.** PASS된 초안을 사용자에게 제시한다. 쓰기 7종 **각각**에 대해 **전송될 정확한 인자 JSON + 대상 보드명/URL**을 보여준다(**요약본 금지**). `baseUrl`이 localhost가 아니면 **"프로덕션 대상"**, `boardVisibility`가 `PUBLIC`이면 **"외부 독자가 읽는 공개 보드 — 댓글도 공개"** 경고를 함께 표시하고 별도 확인을 받는다. `board_create_suggestion`·`board_create_release_draft` 항목에는 **"반환 id만 · 재조회 수단 없음"** 을 함께 표기한다(아래 12단계). 스크럽 결과를 보고한다. **사용자의 명시 승인 이전에는 어떤 쓰기 도구도 호출하지 않는다.** 수정 요청이 오면 반영 후 다시 미리보기한다.
 12. **실행 → 사후 검증 → 보고.** 이 단계의 작성자는 **오케스트레이터(이 세션)** 다. 쓰기를 호출하는 유일한 주체이므로, 무엇이 실제로 실행됐는지 아는 주체도 여기뿐이다.
     - **【첫 쓰기 이전】 `{RUN_DIR}/execution_state.md` 초기화.** 승인된 쓰기 **전건**을 실행 순서대로 적고 전 항목을 `PENDING`으로 둔다(재개하는 **다른** 세션이 읽을 파일이므로 형식을 임의로 바꾸지 않는다. 항목당 아래 블록 4줄 — 인자 JSON 에 `|` 가 흔히 섞이므로 한 줄 구분자 표는 쓰지 않는다:
@@ -178,7 +179,7 @@ RUN_DIR    = <절대 경로>
 | **G4** | **중복 정찰 선행** | `board_list_posts` 조회 없이 `board_create_post` 시도 | 서로 다른 `q` **2회 이상** 조회 + 후보를 `board_get_post`로 본문 대조 + "신규/기존" 판정 근거 기록 |
 | **G5** | **쓰기 승인 (human checkpoint · 대체 불가)** | 미리보기 없음 · 요약본 미리보기 · 승인 미수신 · 승인 후 인자 변경 | 쓰기 7종 각각에 대해 **전송될 정확한 인자 JSON + 대상 보드/URL**을 제시하고 명시 승인 수신 |
 | **G6** | **프로덕션·공개면 확인** | `baseUrl`이 localhost가 아님(= 프로덕션 `tavlet.io`) 또는 대상 보드가 **공개 가시성** | 미리보기에 "프로덕션 대상"·"외부 독자가 읽는 공개 보드" 경고를 명시하고 **별도 확인**을 받는다 |
-| **G7** | **비밀·개인정보 스크럽** | 초안 본문에 PAT(`tvl_`/`hhb_` 접두사)·`.env` 값·API 키·Bearer 토큰·개인 이메일·사용자 홈 절대경로·(공개 보드 대상 시) 미공개 내부 정보가 잔존 | 미리보기 **이전에** 스크럽 스캔을 수행하고 결과를 보고. 잔존 시 하드 FAIL |
+| **G7** | **비밀·개인정보 스크럽** | 초안 본문에 PAT(`tvl_`/`hhb_` 접두사)·`.env` 값·API 키·Bearer 토큰·개인 이메일·사용자 홈 절대경로·(공개 보드 대상 시) 미공개 내부 정보가 잔존 | 미리보기 **이전에** 스크럽 스캔을 수행하고 결과를 보고. 잔존 시 하드 FAIL. 기계 판정분은 `scripts/validate_drafts.py` 의 `G7-LEAK` 전건이고, **공개 보드 대상의 미공개 내부 정보는 사람 판단 영역이다** |
 
 **G6·G7이 함께 필요한 이유:** 이 스킬은 세션의 **에러 원문·로그·명령 출력**을 그대로 보드 본문으로 옮긴다. 이 재료는 시크릿·토큰·개인정보를 자주 포함한다. 그리고 MCP `board_add_comment`는 `{ postId, body }` 만 노출한다 — **`internal`(팀 전용) 플래그가 없으므로 MCP 경유 댓글은 전부 공개 댓글이다**(근거: 원격 `src/lib/mcp/board-tools.ts` 의 `board_add_comment` inputSchema 가 `{ postId, body }` 뿐이고 서비스에 `{ body }` 만 전달. stdio 판도 동일 — `server.ts` 도구 설명 "게시글에 댓글 작성(공개)", `board-client.ts:56-57`. `src/lib/validation/posts.ts:47`에 `internal` 필드가 존재하지만 MCP 도구는 노출하지 않는다). 그리고 많은 조직이 **공개 로드맵 보드**를 운영한다 — `.tavlet.json` 의 `boardVisibility` 가 `PUBLIC` 이면 이 스킬이 쓰는 모든 본문·댓글을 외부 독자가 읽는다. 스크럽 게이트 없이는 이 스킬이 유출 경로가 된다.
 
@@ -186,7 +187,15 @@ RUN_DIR    = <절대 경로>
 
 ## 쓰기 도구 7종 × 승인 게이트 배치
 
-**쓰기 7종은 예외 없이 이 배치를 따른다.** 하나라도 게이트 밖에 있으면 Evaluator 프로브 6이 즉시 FAIL을 낸다.
+**쓰기 7종은 예외 없이 이 배치를 따른다.**
+
+**절차 불변식 — 라운드마다 검사하지 않는다.** 아래 세 가지는 이 스킬의 **고정 절차**이며 초안마다 달라지는 값이 아니다. 오케스트레이터가 **런당 1회**, 11단계 미리보기를 구성하는 시점에 확인한다.
+
+- **(a)** 쓰기 7종 각각에 미리보기 단계가 절차상 존재한다 (아래 표)
+- **(c)** 모든 호출이 명시 승인 **이후**로 배치되어 있다 (11·12단계)
+- **(d)** 승인 후 인자가 바뀌면 **재-미리보기**한다 (11단계)
+
+이 셋을 Evaluator 프로브로 두면 **라운드마다 같은 답이 나와 형해화된다**(v1.1.0 의 프로브 6이 그랬다). 초안마다 달라지는 것 — 인자가 **전문**인지, read-back 불가 2종 표기가 있는지 — 만 프로브 5가 본다. 절차 불변식이 깨지면 그것은 라운드 안의 채점 문제가 아니라 **스킬 자체의 결함**이므로 여기서 멈추고 고친다.
 
 | # | 쓰기 도구 | 미리보기에 반드시 포함할 것 | 호출 시점 |
 |---|---|---|---|
@@ -209,7 +218,7 @@ RUN_DIR    = <절대 경로>
 | `spec.md` | Planner | 기록 의도·증거 기준 · 보드/테넌트 컨텍스트와 세션 사실 목록 · 쓰기 단위 목록 · Definition of Done |
 | `drafts_v<n>.md` | Generator | 라운드 `n`의 쓰기 초안 묶음 (도구별 4종 세트: 대상 · 정확한 인자 JSON · 증거 출처 · 선행 조건) |
 | `generator_report_v<n>.md` | Generator | Strategic Decision · 초안 목록 · 증거 대조표 · 미검증 항목 · 계약 검증 · 스크럽 결과 · 자기평가 · 실행 순서 |
-| `critique_v<n>.md` | Evaluator | Verdict · C1–C5 점수와 증거 인용 · 프로브 7종 결과 · Blocking Issues · Iteration Quality Note · 선택적 `REDIRECT:` |
+| `critique_v<n>.md` | Evaluator | Verdict · C1–C5 점수와 증거 인용 · 프로브 5종 결과 · Blocking Issues · Iteration Quality Note · 선택적 `REDIRECT:` |
 | `design_memo_v<n>.md` | Generator | PIVOT 제안 + `critique_v<n-1>.md` 근거 인용 (승인 대기) |
 | `handoff_v<n>.md` (재리셋 시 `handoff_v<n>b.md` · `handoff_v<n>c.md`) | Generator | 8단계 초안 작성 중 컨텍스트 불안 시 — **초안 진행 상태만**: 완성한 쓰기 초안 · 남은 초안 · 재확인이 필요한 증거. **쓰기 실행 기록은 여기 들어오지 않는다** |
 | `execution_state.md` | **오케스트레이터(메인 세션)** | 12단계 실행 상태의 정본 — 승인된 쓰기 전건과 각 항목의 `PENDING` / `DONE(<id·URL>)` / `FAILED(<반환 원문>)` / `CANCELLED` / `UNKNOWN(<사유> · 사용자 확인 필요)`. 첫 쓰기 **이전에** 초기화하고 **각 호출 직후** 갱신한다. 라운드 접미사 없음(실행은 런당 1회) |
@@ -244,10 +253,13 @@ Opus 5에서는 단일 연속 Generator가 초안 묶음을 완주하는 것이 
 
 ## 이터레이션 지혜
 
-- **상한은 범위로 둔다 — 5–15 라운드.** 단일 값으로 고정하면 그 숫자가 품질 목표를 대체한다.
-- **낮은 끝에서 반사적으로 멈추지 않는다.** 점수가 여전히 오르는 중이면 5에서 멈추지 말고 15까지 간다. 원 사례연구에서 **아홉 번째 반복까지는 무난한(clean, dark-themed) 결과**였고, 접근을 통째로 갈아엎는 결정적 도약은 **열 번째 사이클에서** 나왔다. 아홉 번의 "깔끔한 산출물"이 열 번째의 조건이었다는 뜻이다.
-- **시간에 관대하라.** 한 번의 완주에 최대 ~4시간까지 허용한다. 여기서 한 라운드는 **초안 텍스트를 읽는 값싼 심사**이고, 실제 쓰기는 PASS 이후 승인 시점에 **한 번만** 일어난다. 라운드를 늘려도 프로덕션 부작용은 늘지 않는다.
-- **중간 라운드가 최종 라운드보다 나을 수 있다.** Evaluator의 Iteration Quality Note를 진지하게 읽는다. 최종 제출은 **마지막 라운드**가 아니라 **최선 라운드**여야 한다.
+- **상한 = 2 라운드.** 1R 심사 → FAIL 이면 1회 REFINE → 2R. 2R 에서도 PASS 가 아니면 더 돌리지 않고 최선 라운드의 초안과 남은 갭을 사용자에게 제시한다(12단계).
+- **PASS 는 즉시 탈출이다.** 최소 라운드 규정은 **없다.** 1라운드 PASS 는 예외가 아니라 **목표 경로**다.
+- **왜 2인가 — 이 과제는 발산이 아니라 수렴이다.** 세션에서 관측한 사실을 보드 형식으로 옮기는 **전사 + 계약 검증**이며, 실패 모드는 누락과 형식 위반이지 "발상이 진부함"이 아니다. 계약·길이·enum·누출·좌표 카운트는 `scripts/validate_drafts.py` 가 결정론적으로 잡고 Generator 가 **제출 전에** 고친다. Evaluator 에 남는 것은 판단이 필요한 축뿐이고, 그 판정은 라운드를 반복해도 대체로 같은 답이 나온다.
+- **원 사례연구는 이 도메인의 근거가 아니다.** "아홉 번째까지 무난, 열 번째에 도약"은 접근을 통째로 갈아엎을 여지가 있는 **창의적 발산 과제**의 관찰이다. 여기서 `PIVOT`·`design_memo_v<n>.md` 가 거의 발동하지 않는 이유도 같다 — 갈아엎을 "접근"이 애초에 좁다. v1.1.0 의 5–15 라운드는 그 관찰을 이 도메인에 그대로 이식한 값이었다.
+- **라운드는 안전 장치가 아니다.** 되돌리기 어려운 쓰기를 막는 것은 G1·G3·G4 와 11단계 승인 게이트다. 한 라운드는 **초안 텍스트를 읽는 값싼 심사**이고 실제 쓰기는 PASS 이후 승인 시점에 한 번만 일어난다 — 라운드를 늘려도 프로덕션 부작용이 늘지 않듯 **줄여도 늘지 않는다.** 상한을 낮추며 잃는 것은 품질 연마이지 안전이 아니다.
+- **중간 라운드가 최종 라운드보다 나을 수 있다.** Evaluator의 Iteration Quality Note를 진지하게 읽는다. 최종 제출은 **마지막 라운드**가 아니라 **최선 라운드**여야 한다. 상한이 2여도 이 판정은 유효하다.
+- **상한을 다시 올릴 조건.** 실제 런에서 2R PASS 실패가 반복되고, 그 사유가 `validate_drafts.py` 로 잡히지 않는 축(C1 서술 품질 · C3 보드 위생)이라면 3으로 올린다. **추측으로 올리지 않는다** — 근거는 `critique_v<n>.md` 전건이다.
 
 ## V1 vs V2 모델 가이드
 
@@ -257,7 +269,7 @@ Opus 5에서는 단일 연속 Generator가 초안 묶음을 완주하는 것이 
 | **Opus 4.5** | 대부분 제거 | Simplified (V2) | 다시간 일관 세션 가능. 스프린트 분해를 뺄 수 있다. |
 | **Opus 4.6** | 제거. 계획·롱컨텍스트·디버깅 개선 | Simplified 또는 single-session | 2시간 이상 빌드 지속 가능. 각 구성요소를 재검토해 하중이 없는 것을 뺀다. |
 | **Opus 4.8** | 제거 | Simplified | 단일 연속 Generator로 충분. |
-| **Opus 5** (이 스킬의 목표) | **제거** | **Simplified** | 단일 연속 Generator + 라운드 종료 시 Evaluator 1회, 스프린트 없음. **승인 게이트는 영구다** — 컨텍스트 한계가 아니라 **외부 시스템에 대한 부작용 권한** 문제이므로 모델 업그레이드로 사라지지 않는다. |
+| **Opus 5** (이 스킬의 목표) | **제거** | **Simplified** | 단일 연속 Generator + **라운드당** Evaluator 1회(라운드가 총 1회라는 뜻이 아니다 — 라운드마다 Generator 1회 + Evaluator 1회이며 상한은 2 라운드), 스프린트 없음. 결정론 검증은 프롬프트가 아니라 `scripts/validate_drafts.py` 가 맡는다. **승인 게이트는 영구다** — 컨텍스트 한계가 아니라 **외부 시스템에 대한 부작용 권한** 문제이므로 모델 업그레이드로 사라지지 않는다. |
 
 **Evaluator의 가치는 고정된 예/아니오가 아니다.** 과제와 모델의 경계에 달려 있다. 여기서는 Opus 5에서도 값을 한다: 2× 축(증거 구체성·세션 사실성)이 바로, 압박이 없으면 강한 모델도 요약 어휘로 미끄러지는 지점이고, 그 미끄러짐의 결과가 **프로덕션 보드에 남는 거짓 기록**이기 때문이다.
 
@@ -279,9 +291,10 @@ Opus 5에서는 단일 연속 Generator가 초안 묶음을 완주하는 것이 
 - 인용된 커밋 해시의 실재를 `git`으로 확인하지 않고 통과시킨다.
 - 프로브 4(중복 재정찰)를 생략하고 Generator의 "중복 없음"을 신뢰한다.
 - **요약본 미리보기를 승인 게이트 충족으로 인정한다.**
-- `tagNames`/`tagIds`, task status/post status 혼동을 잡지 못한다.
+- **`validate_drafts.py` 의 ERROR 를 무시하고 통과시킨다** — `tagNames`/`tagIds` 비대칭, task status/post status 혼동, 길이 상한은 이제 스크립트가 잡는다. 잡힌 것을 Evaluator 가 흘려보내면 스크립트를 넣은 의미가 없다.
+- **프로브 1을 재실행 없이 인용한다** — `generator_report_v<n>.md` 에 실린 검증기 리포트를 옮겨 적는 것은 수행이 아니다. Evaluator 가 **직접 실행**해 대조해야 한다(자기평가를 옮겨 적는 것과 같은 형태의 실패).
 - `generator_report_v<n>.md`의 자기평가를 그대로 옮겨 적는다(독립 채점 실패).
-- **프로브 6(게이트 감사)을 형식적으로 통과 처리한다** — 절차 배치만 보고 "7종 다 있다"로 넘기면서, 미리보기에 실린 인자가 **전송될 인자 전문인지**·read-back 불가 2종 표기가 있는지를 초안 단위로 대조하지 않는다. 이 프로브는 라운드마다 같은 답이 나오기 쉬워 가장 먼저 형해화된다.
+- **프로브 5(초안 단위 게이트 표기 감사)를 형식적으로 통과 처리한다** — 미리보기에 실릴 인자가 **전송될 인자 전문인지**·read-back 불가 2종 표기가 있는지를 **초안 단위로** 대조하지 않고 넘긴다. 라운드마다 같은 답이 나오던 절차 배치 (a)(c)(d)는 v1.2.0 에서 프로브 밖 「절차 불변식」으로 옮겼으므로, 여기 남은 것은 전부 초안마다 달라지는 항목이다.
 - 어떤 기준에 3점을 주고 verdict를 PASS로 낸다(현행 로직에서 **3점 이하는 FAIL**이다).
 
 **(c) 놓친 사례를 구체 반례 앵커로 추가한다.** `references/evaluator-calibration.md`의 해당 기준·해당 점수대에 넣거나 `references/evaluator-prompt.md`의 프로브 문구를 강화한다. 예 — "커밋 해시 `a3f91c2`를 검증 없이 통과시켰다 → 프로브 2에 `git cat-file -e <hash>^{commit}` 확인을 명령형으로 명시" · "이 다이제스트에 C1 4점을 줬으나 명령 출력이 없다 → C1의 3/5 앵커로 추가".
@@ -290,8 +303,8 @@ Opus 5에서는 단일 연속 Generator가 초안 묶음을 완주하는 것이 
 
 ## 마무리 가이드
 
-- **모델을 올릴 때는 하네스 구성요소를 한 번에 하나씩 제거한다.** 먼저 뺄 후보: 라운드 상한 하향, Evaluator 프로브 축소. 각각 제거 후 실제 런의 `critique_v<n>.md`와 등록 결과를 비교한다.
-- **하네스 공간은 줄어드는 게 아니라 이동한다.** 모델이 좋아질수록 "완주시키기 위한 비계"는 줄고, "무엇이 좋은가를 정의하고 검증하는 장치"가 남는다. 여기서는 루브릭 C1·C2와 프로브 7종이 그 남는 부분이다.
+- **모델을 올릴 때는 하네스 구성요소를 한 번에 하나씩 제거한다.** 라운드 상한 하향(15→2)과 Evaluator 프로브 축소(7종→5종)는 **v1.2.0 에서 이미 수행했다.** 다음 후보는 **프로브 5**다 — 표기 검사의 결정론적 부분은 이미 `validate_drafts.py` 가 수행하므로 중복 여지가 있다. 제거 후 실제 런의 `critique_v<n>.md`와 등록 결과를 비교한다.
+- **하네스 공간은 줄어드는 게 아니라 이동한다.** 모델이 좋아질수록 "완주시키기 위한 비계"는 줄고, "무엇이 좋은가를 정의하고 검증하는 장치"가 남는다. 여기서는 루브릭 C1·C2와 프로브 5종이 그 남는 부분이다. **결정론적으로 판정되는 것은 프롬프트가 아니라 스크립트로 내린다** — v1.2.0 에서 프로브 7종이 5종이 된 방식이 이것이다. 프롬프트에 남길 것은 판단이 필요한 것뿐이다.
 - **승인 게이트(G5)와 프로덕션·공개면 확인(G6), 스크럽(G7)은 영구다.** 절대 제거 후보에 넣지 않는다. 이것들은 모델의 약점을 보완하는 장치가 아니라, **외부 시스템에 대한 부작용 권한을 사람에게 남겨두는 장치**다.
 
 ## 참조 파일
@@ -307,4 +320,5 @@ Opus 5에서는 단일 연속 Generator가 초안 묶음을 완주하는 것이 
 | `references/rubric.md` | Generator 자기평가 · Evaluator 채점 |
 | `references/evaluator-calibration.md` | Evaluator 채점 전 · 튜닝 (c) |
 | `references/mcp-setup.md` | G1 미연결 시 · 최초 설치·배포 시 |
+| `scripts/validate_drafts.py` | **8단계 Generator 제출 전** · **9단계 Evaluator 프로브 1.** `drafts_v<n>.md` 의 계약·길이·enum·누출·증거 좌표를 결정론적으로 판정한다. 읽기 전용 — `board_*` 호출도 네트워크도 없다 |
 | `commands/tvl.md` | `/tvl` 슬래시 커맨드 정본 소스. **이 파일만으로는 아무 효과가 없다** — `~/.claude/commands/tvl.md` 심링크(`references/mcp-setup.md` §6)를 만들어야 `/tvl`이 존재한다. 심링크 없이도 트리거 문구로 스킬은 활성화된다 |

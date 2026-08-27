@@ -13,16 +13,18 @@ Claude Code 세션에서 **실제로 수행한 개발 작업**을 [tavlet](https
 - **분류·중복 제안** — 카테고리·태그 제안, 중복 후보 지목
 - **릴리스 초안** — 완료 post를 모아 체인지로그 초안 패키지 등록
 
-접근 경로는 MCP 서버가 노출하는 **board 도구 14종**뿐이다. REST를 직접 호출하거나 우회 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다.
+접근 경로는 MCP 서버가 노출하는 **board 도구 14종**뿐이다. REST를 직접 호출하거나 보드에 접근하는 우회 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다. (보드에 접근하지 않고 초안 텍스트만 읽는 검증기 `scripts/validate_drafts.py` 는 예외다 — 부작용을 낼 수 없다.)
 
 ## 안전 장치
 
 모든 쓰기는 프로덕션 `tavlet.io`에 대한 **되돌리기 어려운 부작용**이고, 대상 보드 중 일부는 **외부 독자가 읽는 공개 면**이다. 그래서 이 스킬의 하네스는 "더 나은 글"이 아니라 **"등록해도 되는 글"** 을 만든다.
 
 - **승인 게이트** — 모든 쓰기는 정확한 인자 미리보기 + 사용자 명시 승인을 거친다
-- **Planner → Generator → Evaluator 하네스** — 등록 전 초안을 적대적으로 심사한다
+- **결정론 검증기** (`scripts/validate_drafts.py`) — 초안의 도구 계약·enum·길이 상한·시크릿 누출·증거 좌표를 기계적으로 판정한다. 읽기 전용이며 보드에 접근하지 않는다
+- **Planner → Generator → Evaluator 하네스** — 등록 전 초안을 적대적으로 심사한다. 판단이 필요한 축만 남긴다
   - 증거 구체성: 파일 경로·커밋 해시·명령 출력이 실재하는가
   - 세션 사실성: 실제로 하지 않은 일을 쓰지 않았는가
+  - 중복 정찰 재현: 기존 post 갱신이어야 할 것을 신규 등록하려 하지 않는가
   - 비밀·개인정보 스크럽: PAT·`.env` 값·API 키·개인 이메일·홈 절대경로가 남아 있지 않은가
   - 공개면 경고: 대상 보드가 공개면이면 미공개 내부 정보 잔존 여부를 추가 심사
 - **테넌트 확정** — 매 실행 `board_list_boards()` 반환에 대상 boardId 가 실재함을 확인한다. 대상 보드를 조용히 정하는 경로는 쓰지 않는다
@@ -79,6 +81,7 @@ ln -s "$(pwd)/commands/tvl.md" ~/.claude/commands/tvl.md
 | [`references/mcp-setup.md`](references/mcp-setup.md) | MCP 배선, `.tavlet.json` 스키마, 진단 분기 |
 | [`references/board-tool-contract.md`](references/board-tool-contract.md) | board 도구 14종 계약 |
 | [`references/rubric.md`](references/rubric.md) | Evaluator 채점 루브릭 |
+| [`scripts/validate_drafts.py`](scripts/validate_drafts.py) | 초안 결정론 검증기 (읽기 전용) |
 
 `SKILL.md` 가 에이전트 동작의 단일 정본이다. 이 README는 사람이 읽는 문서이며 런타임에 필요하지 않다.
 

@@ -18,6 +18,8 @@ board_set_status · board_create_suggestion · board_create_release_draft
 사용자 명시 승인을 받아 수행한다. 읽기 도구로 증거를 보강하는 것은 허용된다:
 board_list_boards · board_list_posts · board_get_post · board_get_taxonomy · board_list_statuses ·
 board_list_tasks · board_list_release_candidates. 로컬 파일 읽기와 git 조회도 허용된다.
+그리고 `{SKILL_ROOT}/scripts/validate_drafts.py` 실행이 허용된다 — 자기 초안 텍스트만 읽는
+읽기 전용 검증기이며 board_* 를 호출하지도 네트워크에 접속하지도 않는다((d) 참조).
 
 이 규칙을 어기면 사용자 승인 없이 프로덕션 보드가 바뀐다. 되돌릴 수 없다.
 
@@ -37,6 +39,7 @@ board_list_tasks · board_list_release_candidates. 로컬 파일 읽기와 git �
 - `{SKILL_ROOT}/references/board-tool-contract.md` — board_* 14종 정본 계약. 인자·enum·길이 상한·
   비대칭 체크리스트·쓰기별 사후 read-back 수단이 전부 여기 있다. 도구 인자를 기억으로 쓰지 않는다.
 - `{SKILL_ROOT}/references/rubric.md` — 제출 전 자기평가에 쓴다.
+- `{SKILL_ROOT}/scripts/validate_drafts.py` — (d)·(e) 에서 **실행한다.** 읽기 전용 검증기.
 - (재시도라면) `{RUN_DIR}/critique_v<n-1>.md` — Strategic Decision 의 근거.
 - (주입 목록에 있으면) `{RUN_DIR}/design_memo_v<n-1>.md` — 직전 라운드가 제안하고 오케스트레이터가
   **승인한 PIVOT**. 이 파일이 주어졌다면 이번 라운드는 그 방향으로 간다. 주어지지 않았다면 승인이 없는
@@ -87,28 +90,40 @@ board_list_tasks · board_list_release_candidates. 로컬 파일 읽기와 git �
     본문 품질 요건: post 본문 · 각 task 의 detail · comment 본문 각각에 **검증 좌표 최소 1개**
     (파일 경로·가능하면 `파일:라인` / 커밋 해시 / 실행 명령과 출력 / 에러 원문).
 
-(d) **계약 검증.** 각 인자를 board-tool-contract.md 와 1:1 대조한다. 최소 이 항목들:
-    - 필수 필드 존재 (board_create_suggestion 의 rationale, release entry 의 postIds 등)
-    - enum 철자
-    - **task status(TODO/DOING/DONE/DROPPED) vs post status(OPEN/UNDER_REVIEW/PLANNED/
-      IN_PROGRESS/DONE/DECLINED)** 집합 혼동
-    - board_set_status 의 status·columnId **배타** (둘 다 없거나 둘 다 있으면 서버가 throw)
-    - board_create_post 의 tagNames(**이름**) vs board_create_suggestion 의 tagIds(**id**) 비대칭
-    - projectId 는 board_list_boards 반환의 **DB id** — project slug(`default`)를 넣지 않는다
-    - categoryIds·tagIds·columnId 가 실제 조회 반환에 존재하는 값인지
-    - 길이 상한: post title 200 / post body 10000 / tagNames 항목 40자·최대 10개 /
-      task title 200 / task detail 2000 / task items 최대 50개 / **comment body 5000** /
-      release version 50 / release name 100 / release body 10000 / entries 최대 50 /
-      entry title 200 / entry body 20000 / entry postIds 최대 100
-    - 대상 boardId 가 board_list_boards 반환에 실재
+(d) **계약 검증 — 스크립트로 돌린다. 눈으로 대조하지 않는다.**
 
-(e) **스크럽.** 초안 본문 **전체**를 스캔한다:
-    - PAT 접두사 `tvl_` · `hhb_`
-    - `.env` 값, API 키, Bearer 토큰, 비밀번호, 커넥션 문자열(DATABASE_URL 등)
-    - 개인 이메일
-    - 사용자 홈 절대경로 (`/Users/<name>/…` → 레포 상대경로로 치환)
-    - 대상이 공개 보드면 추가로 미공개 내부 정보(내부 부채 상세·미공개 로드맵·고객명)
+        python3 {SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md
+
+    이 검증기가 board-tool-contract.md 의 계약을 결정론적으로 판정한다 — 필수 필드, enum 철자,
+    task status(TODO/DOING/DONE/DROPPED) vs post status(OPEN/UNDER_REVIEW/PLANNED/IN_PROGRESS/
+    DONE/DECLINED) 집합 혼동, board_set_status 의 status·columnId **배타**, board_create_post 의
+    tagNames(**이름**) vs board_create_suggestion 의 tagIds(**id**) 비대칭, projectId 자리의
+    project slug, §4 길이 상한 전건, 4종 세트 형식, read-back 불가 2종의 표기.
+
+    **ERROR 가 0 이 될 때까지 고친 뒤에야 다음으로 간다.** ERROR 를 남긴 채 제출하면 Evaluator 가
+    프로브 1에서 같은 스크립트를 직접 돌려 그대로 잡아낸다 — 라운드 하나를 버리는 것이다.
+    WARN 은 자동 실격이 아니지만 **각 항목에 대해 고칠지 남길지 판단하고 그 판단을 보고서에 적는다.**
+
+    **스크립트가 보지 못하는 것은 당신이 대조한다.** 검증기는 값의 *형식*만 안다:
+    - `categoryIds`·`tagIds` 값이 `board_get_taxonomy` 반환에 **실제로 존재**하는가
+    - `columnId` 값이 `board_list_statuses` 반환에 **실제로 존재**하는가
+    - 대상 `boardId` 가 `board_list_boards` 반환에 **실재**하는가
+    - `projectId` 가 `board_list_boards` 반환의 **그 프로젝트의 DB id** 인가
+    전부 spec.md §6 의 실제 조회 결과와 1:1로 맞춘다. §6 에 없는 값은 쓰지 않는다.
+
+    검증기가 `VALIDATOR_ERROR` 로 끝나면 그 원문을 보고서에 적는다. 검증기가 죽은 것을
+    "통과"로 읽지 않는다.
+
+(e) **스크럽.** (d) 의 검증기가 `G7-LEAK` 로 잡는 기계 판정분 — PAT 접두사 `tvl_`·`hhb_`,
+    `.env` 값 대입, API 키, Bearer 토큰, 커넥션 문자열, 개인 이메일, 사용자 홈 절대경로 — 은
+    **ERROR 0 이면 이미 처리된 것이다.** 홈 절대경로는 지우지 말고 **레포 상대경로로 치환**한다.
+
+    **그 위에 당신이 판단할 것이 남는다 — 정규식으로 잡히지 않는 항목이다.** 대상이 공개 보드면
+    (spec.md §6 의 `boardVisibility` 가 `PUBLIC`, 또는 값이 없어 안전 측 기본값으로 `PUBLIC`)
+    초안 본문 **전체**를 다시 읽고 미공개 내부 정보를 찾는다 — 내부 부채 상세 · 미공개 로드맵 ·
+    고객명 · 내부 인력 배치. 이것은 검증기가 하지 못하며 Evaluator 프로브 5(f)가 다시 본다.
     **board_add_comment 에는 팀 전용 플래그가 없다 — 모든 댓글은 공개다.**
+
     스캔 대상과 발견·치환 내역을 보고서에 기록한다. "스캔함"만 쓰지 말고 무엇을 찾았는지 쓴다.
 
 (f) **자기평가.** {SKILL_ROOT}/references/rubric.md 의 C1–C5 각각에 대해 **자기 초안을 채점하고
@@ -191,8 +206,11 @@ handoff_v<n>b.md, 그다음은 handoff_v<n>c.md. **앞의 handoff 를 덮어쓰�
 ## 산출한 쓰기 초안               [번호 · 도구 · 대상 · 한 줄 목적]
 ## 증거 대조표                    [주장 → 좌표(파일:라인 / 커밋 / 명령+출력 / 에러 원문) → 확인 방법]
 ## 미검증 항목                    [무엇을 확인하지 못했고 왜인지]
-## 계약 검증 결과                 [(d) 의 항목별 통과/수정 내역]
-## 스크럽 결과                    [(e) 스캔 대상과 발견·치환 내역]
+## 검증기 리포트                   [(d) 의 validate_drafts.py 최종 실행 — 종료 코드 · ERROR 0 확인 ·
+                                   좌표 카운트 표 · WARN 항목별로 고쳤는지 남겼는지와 그 판단]
+## id 실재 대조                    [(d) — categoryIds·tagIds·columnId·boardId·projectId 를 spec.md §6 의
+                                   어느 조회 반환과 맞췄는지]
+## 스크럽 결과                    [(e) — 기계 판정분(G7-LEAK)과 **공개면 내부 정보 판단**을 분리 기재]
 ## 자기평가 (C1–C5)               [기준별 자기 점수 + 근거]
 ## 알려진 한계
 ## 실행 순서 제안                 [의존 관계를 반영한 쓰기 순서]
