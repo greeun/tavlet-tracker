@@ -127,7 +127,7 @@ DB 상 보드는 `kind`(`BoardKind` = `FEATURE`·`BUG`·`FEEDBACK`)와 `visibili
 | 10 | **`board_update_task_status`** | **W** | **SG 진행 갱신** | `{ postId, taskId, status }`, status ∈ **`TODO`·`DOING`·`DONE`·`DROPPED`** | **post 상태 enum과 다른 집합이다 — 혼동 금지.** 세션에서 다루지 않은 task는 전이하지 않는다 | **가능** — `board_list_tasks({postId})` 로 해당 task 의 status 대조 |
 | 11 | **`board_add_comment`** | **W** | **SH 세션 다이제스트** | `{ postId, body }` — body **1–5000자** | **`internal` 플래그 없음 = 공개 댓글.** 스크럽(G7) 필수 | **부분** — `board_get_post({postId})` 의 `commentCount` 증가만 확인. **본문은 재조회되지 않는다**(근거: `posts.ts:340` — DTO에 댓글 본문 없음) |
 | 12 | **`board_set_status`** | **W** | **SI 상태 전이** | `{ postId, status? , columnId? }`, status ∈ **`OPEN`·`UNDER_REVIEW`·`PLANNED`·`IN_PROGRESS`·`DONE`·`DECLINED`** | **둘 다 없음 → throw `status 또는 columnId 중 하나는 필수입니다.` 둘 다 지정 → throw `status·columnId 는 동시에 지정할 수 없습니다.`** (근거: `server.ts:159-160`) | **가능** — `board_get_post({postId})` 의 `status`(=`boardStatus.kind`) · `boardStatus.id`(=`columnId`) 대조 (근거: `posts.ts:335,349`) |
-| 13 | **`board_create_suggestion`** | **W** | **SJ 분류·중복 제안** | `{ postId, categoryIds?, tagIds?, kindNote?, priority?, rationale, duplicates? }`. `rationale` **필수**. `duplicates` 항목 = `{ candidateId, confidence, reason }`. `priority`·`confidence` ∈ `HIGH`·`MEDIUM`·`LOW` | **여기서는 `tagIds`(id) — `board_create_post`의 `tagNames`(이름)와 반대다.** `rationale` 누락 → 스키마 오류. 병합은 항상 사람 승인 | **없음** — 제안을 조회하는 도구가 14종에 없다. **반환 id만 보고** |
+| 13 | **`board_create_suggestion`** | **W** | **SJ 분류·중복 제안** | `{ postId, categoryIds?, tagIds?, kindNote?, priority?, rationale, duplicates? }`. `rationale` **필수**. `duplicates` 항목 = `{ candidateId, confidence, reason }`. `priority`·`confidence` ∈ `HIGH`·`MEDIUM`·`LOW` | **여기서는 `tagIds`(id) — `board_create_post`의 `tagNames`(이름)와 반대다.** `rationale` 누락 → 스키마 오류. **`categoryIds`·`tagIds` 중 최소 하나가 있어야 한다** — 둘 다 비우면 `rationale` 이 있어도 `{"ok":false,"error":"올바르지 않은 제안입니다.","code":"VALIDATION_FAILED"}` 로 거절된다(2026-09-04 실측). 분류할 대상이 없는 제안은 성립하지 않기 때문이다. 병합은 항상 사람 승인 | **계약 14종에는 없으나 `board_get_suggestion` 이 실재한다**(아래 §3-1 주석). 14종만 쓴다면 **반환 id만 보고** |
 | 14 | **`board_create_release_draft`** | **W** | **SK 릴리스 초안** | `{ projectId, version, name?, body, entries }`. `entries` 항목 = `{ title, body, type, postIds }`, `postIds` **1개 이상**. `type` ∈ `NEW`·`IMPROVED`·`FIXED`·`BETA` | **version 중복 → 409.** 발행되지 않는 **초안**임을 미리보기에 명시 | **초안 자체 없음** — 반환 id·version 그대로 보고. 간접 확인 2종만: `board_get_post({postId}).affectedRelease` 대조 · `board_list_release_candidates` 에서 해당 post 소거 |
 
 **쓰기 7종 = 8·9·10·11·12·13·14.** `board_create_suggestion`은 REST `POST /api/agent/posts/{postId}/suggestions`이며 보드에 상태를 남기므로 **게이트 대상이다.**
@@ -144,11 +144,12 @@ DB 상 보드는 `kind`(`BoardKind` = `FEATURE`·`BUG`·`FEEDBACK`)와 `visibili
 | `board_update_task_status` | 가능 | `board_list_tasks` 의 해당 task status | `board-client.ts:53` |
 | `board_add_comment` | **부분** | `board_get_post` 의 `commentCount` 증가만. **본문 대조 불가** | `services/posts.ts:340` (DTO에 댓글 본문 없음) |
 | `board_set_status` | 가능 | `board_get_post` 의 `status`·`boardStatus.id` | `services/posts.ts:335,349` |
-| `board_create_suggestion` | **없음** | — 조회 도구 자체가 14종에 없다 | `server.ts` `registerTool` 14건 전수 — suggestion 조회 도구 부재 |
+| `board_create_suggestion` | **14종 안에는 없음** | — 계약이 정한 14종에 조회 도구가 없다. 다만 원격 서버는 `board_get_suggestion({postId})` 를 노출하며(2026-09-04 실측 18종), 그것을 쓰면 `{"suggestion":null}` 로 미등록을 실증할 수 있다 | `server.ts` `registerTool` 14건 전수 — suggestion 조회 도구 부재. 원격은 그보다 많다 |
 | `board_create_release_draft` | **초안 자체 없음** | 간접 2종만: 포함된 post 의 `affectedRelease`(version 대조) · `board_list_release_candidates` 에서 그 post 소거 | `services/posts.ts:346` · `services/releases.ts:399`(후보 조건 `affectedReleaseId: null`) · `releases.ts:462-463`(초안 생성이 `affectedReleaseId` 를 채운다) |
 
 **보고 규약 (지키지 않으면 C2 위반):**
 - read-back이 **없는 2종**(`board_create_suggestion`·`board_create_release_draft`)은 **미리보기와 최종 보고 양쪽에** `반환 id만 · 재조회 수단 없음` 을 표기한다.
+  - 다만 이 표기는 **계약 14종 기준**이다. 세션에 `board_get_suggestion` 이 노출되어 있다면 그것으로 확인할 수 있고, 확인했다면 표기 대신 그 결과를 적는다. 없는 확인을 했다고 적지 않는 것이 규칙의 취지이지, 있는 도구를 쓰지 말라는 뜻이 아니다.
 - `board_add_comment`는 "댓글 등록을 확인했다"가 아니라 **"`commentCount` 증가만 확인, 본문은 재조회 불가"** 로 적는다.
 - 릴리스 초안의 간접 확인 2종을 수행했다면 **간접임을 명시**한다. 초안 본문·엔트리는 어느 쪽으로도 재조회되지 않는다.
 - **검증하지 않은 것을 검증했다고 쓰지 않는다.** 이 스킬은 그 문장을 막으려고 존재한다.
@@ -197,6 +198,7 @@ DB 상 보드는 `kind`(`BoardKind` = `FEATURE`·`BUG`·`FEEDBACK`)와 `visibili
 
 - [ ] `board_create_post` → **`tagNames`**(태그 **이름** 배열, 항목 40자·최대 10개) · `categoryIds`(**id** 배열)
 - [ ] `board_create_suggestion` → **`tagIds`**(태그 **id** 배열) · `categoryIds`(id 배열) — `create_post`와 반대다
+- [ ] `board_create_suggestion` → 두 배열이 **모두 비어 있지 않은지**. 대상 보드의 `board_get_taxonomy` 가 `{"categories":[],"tags":[]}` 라면 지정할 id 가 없으므로 **이 쓰기 자체를 계획에서 뺀다.** 어휘를 만드는 도구는 14종에 없어 사람이 콘솔에서 먼저 만들어야 한다
 - [ ] `projectId`는 **DB id**다. `board_list_boards` 반환의 `projectId`를 쓴다. project **slug**(`default`)를 넣지 않는다
 - [ ] `board_set_status`는 `status`와 `columnId` 중 **정확히 하나**. 둘 다 없거나 둘 다 있으면 throw
 - [ ] `columnId` 값은 `board_list_statuses` 반환에서만 가져온다

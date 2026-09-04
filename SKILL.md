@@ -165,6 +165,7 @@ RUN_DIR    = <절대 경로>
       확인 없는 재실행이 중복 post·중복 댓글을 프로덕션에 남긴다. 묻는 쪽이 언제나 옳다.
     - **사후 read-back — 쓰기 7종 중 5종만 가능하다.** `board_create_post`·`board_create_tasks`·`board_update_task_status`·`board_add_comment`·`board_set_status`는 `board_get_post` · `board_list_tasks`로 재조회해 승인 내용과 대조한다(단 댓글은 `commentCount` 증가까지만 확인되고 **본문은 재조회되지 않는다**). 불일치는 숨기지 않고 그대로 보고한다.
     - **read-back 불가 2종.** `board_create_suggestion`·`board_create_release_draft`는 결과를 조회하는 도구가 14종 안에 **없다.** 이 둘은 **반환된 id를 그대로 보고하고 "재조회 수단 없음"을 명시**한다 — 단 중단 후 사용자 확인으로 확정된 항목은 반환 id 가 세션과 함께 소실됐으므로 `DONE(id 미상 · 사용자 확인 · 재조회 수단 없음)`으로 적는다. 없는 id 를 지어내지 않는다 — `execution_state.md`에도 `DONE(<반환 id> · 재조회 수단 없음)`으로 적어 read-back 수행분과 구분한다. 도구별 수단과 근거는 `references/board-tool-contract.md` §3-1. **검증하지 않은 것을 검증했다고 보고하는 것은 이 스킬의 C2 위반이다.**
+      **다만 세션에 계약 밖 조회 도구가 노출되어 있으면 그것을 쓴다** — 원격 서버는 14종보다 많은 도구를 노출하며 `board_get_suggestion({postId})` 가 그 하나다(2026-09-04 실측 18종). 확인했다면 "재조회 수단 없음" 대신 그 결과를 적는다. 이 규칙의 취지는 없는 확인을 했다고 적지 않는 것이지, 있는 도구를 쓰지 말라는 것이 아니다.
     - **보고:** postId · post URL · 커밋 트레일러 `[tv:<taskId>]` · 실행/미실행 목록 · **read-back 수행분과 "재조회 수단 없음" 항목의 분리 기재**. **최종 보고와 사후 read-back의 근거는 기억이 아니라 `execution_state.md`다** — read-back 대상도 이 파일의 `DONE` 항목에서 뽑고, 보고의 실행/미실행 구분도 이 파일의 상태값을 그대로 옮긴다 — `UNKNOWN` 항목은 **"실행 여부 미상 · 사용자 확인 대기"** 로 별도 줄에 적는다. 실행 또는 미실행 어느 쪽으로도 반올림하지 않는다. 상한 도달까지 PASS하지 못했으면 **최선 라운드**(마지막 라운드가 아닐 수 있다)의 초안과 그 라운드의 `critique_v<n>.md`, 남은 갭을 정직하게 제시하되 **승인 없이는 여전히 실행하지 않는다.**
 
 **사용자 확인 게이트(전부 필수, 조용히 생략 불가):** (a) 3단계 tavlet 레포 핸드오프 확정, (b) 4단계 테넌트 확정, (c) 11단계 쓰기 승인 + 프로덕션·공개면 확인.
@@ -204,7 +205,7 @@ RUN_DIR    = <절대 경로>
 | 3 | `board_update_task_status` | 전체 `{ postId, taskId, status }` JSON + 해당 task의 현재 상태 | 승인 후 |
 | 4 | `board_add_comment` | 전체 `{ postId, body }` JSON (body **전문**) + **"이 댓글은 공개"** 표기 | 승인 후 |
 | 5 | `board_set_status` | 전체 `{ postId, status }` 또는 `{ postId, columnId }` JSON + 현재 상태 + task 상태 분포 | 승인 후 · task 전이 후 |
-| 6 | `board_create_suggestion` | 전체 `{ postId, rationale, categoryIds?, tagIds?, kindNote?, priority?, duplicates? }` JSON + **"반환 id만 · 재조회 수단 없음"** 표기 | 승인 후 |
+| 6 | `board_create_suggestion` | 전체 `{ postId, rationale, categoryIds?, tagIds?, kindNote?, priority?, duplicates? }` JSON + **"반환 id만 · 재조회 수단 없음"** 표기(`board_get_suggestion` 이 노출돼 있으면 그것으로 확인한다). **`categoryIds`·`tagIds` 가 둘 다 비면 서버가 거절하므로 그 상태로는 미리보기에 올리지 않는다** | 승인 후 |
 | 7 | `board_create_release_draft` | 전체 `{ projectId, version, name?, body, entries:[{ title, body, type, postIds }] }` JSON + **"발행되지 않는 초안"** · **"반환 id만 · 재조회 수단 없음"** 표기 | 승인 후 |
 
 **읽기 7종**(`board_list_boards` · `board_list_posts` · `board_get_post` · `board_get_taxonomy` · `board_list_statuses` · `board_list_tasks` · `board_list_release_candidates`)은 게이트 없이 자유롭게 호출한다.
