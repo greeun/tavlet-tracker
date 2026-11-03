@@ -10,7 +10,7 @@ tavlet은 4계층 테넌시(Organization → Workspace → Project → Board)를
 
 1. **MCP 등록은 프로젝트(= org/보드) 단위로 분리한다.** org마다 PAT가 다르므로 user 스코프 단일 등록은 금지다 — 한 토큰으로 모든 org를 쓰려는 순간, 그 토큰이 커버하지 않는 보드에는 실패하고 커버하는 보드에는 **의도하지 않은 테넌트로 쓸 위험**이 생긴다.
 2. **토큰 값을 git 추적 파일에 절대 쓰지 않는다.** 파일에 쓰기 전 `git check-ignore -v <파일>` 로 무시 대상임을 **확인하고**, 확인되지 않으면 쓰지 않는다.
-3. **원격 엔드포인트를 쓴다.** 정규 경로는 `https://tavlet.io/api/mcp`(Streamable HTTP)다. 로컬에 설치하거나 클론할 것이 없다. 로컬 stdio 서버(`agent/mcp/board/server.ts`)는 tavlet 저장소 접근 권한이 있는 개발자의 개발용 경로이며, 이 스킬의 전제가 아니다.
+3. **원격 엔드포인트를 쓴다.** 정규 경로는 `https://tavlet.io/api/mcp`(Streamable HTTP)다. 로컬에 설치하거나 클론할 것이 없다. 로컬 stdio 서버는 tavlet v1.19.0 에서 삭제됐다.
 
 ---
 
@@ -70,9 +70,9 @@ claude mcp add --transport http --scope local \
   git check-ignore -v .mcp.json   # 매칭 줄이 나와야 토큰을 쓴다
   ```
 
-### C안 — 로컬 stdio (tavlet 개발자 전용)
+### C안 — 로컬 dev 서버 (tavlet 개발자 전용)
 
-tavlet 저장소를 체크아웃해 개발 중이고 `http://localhost:18000` 을 대상으로 삼을 때만 쓴다. 절차는 tavlet 레포 `docs/api-reference.md` §7.2. 이 경우 `BOARD_DEFAULT_BOARD_ID` env 로 기본 보드를 두는 경로가 남아 있는데, **이 스킬은 그 경로를 쓰지 않는다** — 게이트 **G3**(테넌트 확정)은 매 실행마다 `board_list_boards()` 반환에 대상 boardId 가 실재함을 확인하도록 요구하고, 승인 미리보기의 `board_create_post` JSON에는 **언제나 명시 `boardId` 가 실린다**. 원격판(A·B안)에는 그 fallback 자체가 없고 `boardId` 가 필수 인자다.
+tavlet 저장소를 체크아웃해 개발 중이고 `http://localhost:18000` 을 대상으로 삼을 때만 쓴다. 전송 방식은 원격과 같으므로 A안의 명령에서 주소만 `http://localhost:18000/api/mcp` 로 바꿔 등록한다. 토큰은 그 로컬 DB 에서 발급한 PAT 를 쓴다(tavlet.io 의 PAT 는 로컬에서 통하지 않고, 그 반대도 마찬가지다). `boardId` 는 원격과 똑같이 필수 인자다.
 
 ### 어느 안을 고를까
 
@@ -153,7 +153,7 @@ git check-ignore -v .tavlet.json   # 매칭 줄이 나와야 생성한다
 | 도구 결과가 403 `TOKEN_SCOPE_DENIED` | 그 대상이 토큰 스코프 밖 | 스코프에 대상 보드 grant 추가. 조회 도구는 READ, 쓰기 도구는 WRITE 를 요구한다 |
 | 목록이 **빈 배열** | 이 토큰이 쓸 수 있는 보드가 하나도 없다 | 토큰 스코프에 WRITE grant를 추가한다. **쓰기 경로로 진행하지 않는다** |
 | 목록에 대상 boardId가 **없다** | 그 토큰은 이 보드에 쓸 권한이 없다 (다른 org PAT일 가능성) | 목록에 있는 보드 중에서 고르거나, 올바른 org PAT로 **MCP를 재등록**한다. **여기서 멈춘다** — 이 상태로 진행하면 테넌트 오등록이다 |
-| 연결은 되는데 대상이 localhost | C안(로컬 stdio)으로 등록돼 있다 | 의도한 것이면 그대로. 프로덕션이 목적이면 A안으로 재등록한다 |
+| 연결은 되는데 대상이 localhost | C안(로컬 dev 서버)으로 등록돼 있다 | 의도한 것이면 그대로. 프로덕션이 목적이면 A안으로 재등록한다 |
 | `GET`/`DELETE` 가 405 `METHOD_NOT_ALLOWED` | 원격 엔드포인트는 stateless — 세션 기반 표면(대기 스트림·세션 종료)을 지원하지 않는다 | 정상 동작이다. 도구 호출은 전부 `POST` 로 이뤄진다 |
 
 **어떤 경우에도 REST를 직접 호출하거나 우회 스크립트를 만들지 않는다.** 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다.
