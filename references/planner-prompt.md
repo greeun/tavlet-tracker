@@ -62,8 +62,9 @@ board_set_status · board_create_suggestion · board_create_release_draft)은 �
        후보 postId 와 근거를 적어 보드 정리에 기여한다(`duplicates` 인자는 서버에 없다).
    (b) **릴리스 연계** — DONE 전이가 발생하면 board_list_release_candidates 를 확인해 릴리스 초안
        기회를 계획에 포함할지 판단한다. projectId 는 board_list_boards 반환값이다(slug 아님).
-   (c) **역추적 가능성** — 커밋 트레일러 [tv:<taskId>] 를 계획에 반영해, 이 스킬 없이 한 후속
-       작업도 나중에 보드로 소급 수집될 수 있게 한다.
+   (c) **역추적 가능성** — post URL·postId 를 보고에 남겨, 이 스킬 없이 한 후속 작업도 나중에
+       보드로 소급 연결될 수 있게 한다. 커밋 트레일러 형식은 요구하지 않는다 — 대상 레포에 자체
+       규약이 있으면 그것을 따른다(계약 §2).
 
 4. **빈 계획 금지.** 등록할 실질 내용이나 증거가 없으면 계획을 지어내지 말고
    `NEED_EVIDENCE: <무엇이 없는지>` 를 출력하고 멈춘다. 예:

@@ -1,7 +1,7 @@
 ---
 name: tavlet-tracker
 description: 임의의 Claude Code 세션(어느 레포에서든)에서 수행한 작업을 tavlet 피드백 보드에 MCP board 도구 16종(서버 노출 33종 중)으로 등록·추적한다 — 기존 post 중복 탐색 → post 등록 → task 분해·상태 갱신 → 증거 기반 세션 다이제스트 댓글 → post 상태 전이 → 분류/중복 제안 → 릴리스 초안까지 전체 라이프사이클. 모든 쓰기는 정확한 인자 미리보기 + 사용자 명시 승인 게이트를 거친다. 기본 경로는 오케스트레이터가 초안을 직접 작성해 결정론 검증기(validate_drafts.py)를 통과시킨 뒤 곧바로 미리보기로 가는 것이며, Planner→Generator→Evaluator 하네스(증거 구체성·세션 사실성 적대 심사)는 원천 사실이 없는 소급 등록이나 다건 등록에서만 선택적으로 켠다. 멀티테넌트이므로 MCP 등록은 프로젝트 단위로 분리한다. 트리거 — KO "tavlet 등록", "보드에 올려", "작업 기록", "tvl", "타블렛 보드", "보드에 기록", "post 등록", "task 상태 갱신", "세션 결과 보드 반영", "릴리스 초안". EN "tavlet", "log work to tavlet", "track work on tavlet board", "register post on tavlet board".
-version: 1.4.0
+version: 1.4.1
 ---
 
 # tavlet-tracker
@@ -167,7 +167,7 @@ RUN_DIR    = <절대 경로>
     - **사후 read-back — 쓰기 7종 중 6종이 가능하다.** `board_create_post`·`board_create_tasks`·`board_update_task_status`·`board_add_comment`·`board_set_status`·`board_create_suggestion`은 `board_get_post` · `board_list_tasks` · `board_list_comments` · `board_get_suggestion`으로 재조회해 승인 내용과 대조한다(댓글은 본문·`internal` 까지 대조한다). 불일치는 숨기지 않고 그대로 보고한다.
     - **read-back 불가 1종.** `board_create_release_draft`는 초안을 조회하는 도구가 **없다.** **반환된 id를 그대로 보고하고 "재조회 수단 없음"을 명시**한다 — 단 중단 후 사용자 확인으로 확정된 항목은 반환 id 가 세션과 함께 소실됐으므로 `DONE(id 미상 · 사용자 확인 · 재조회 수단 없음)`으로 적는다. 없는 id 를 지어내지 않는다 — `execution_state.md`에도 `DONE(<반환 id> · 재조회 수단 없음)`으로 적어 read-back 수행분과 구분한다. 도구별 수단과 근거는 `references/board-tool-contract.md` §3-1. **검증하지 않은 것을 검증했다고 보고하는 것은 이 스킬의 C2 위반이다.**
       간접 확인 2종(포함된 post 의 `affectedRelease` · `board_list_release_candidates` 소거)을 했다면 **간접임을 명시**한다.
-    - **보고:** postId · post URL · 커밋 트레일러 `[tv:<taskId>]` · 실행/미실행 목록 · **read-back 수행분과 "재조회 수단 없음" 항목의 분리 기재**. **최종 보고와 사후 read-back의 근거는 기억이 아니라 `execution_state.md`다** — read-back 대상도 이 파일의 `DONE` 항목에서 뽑고, 보고의 실행/미실행 구분도 이 파일의 상태값을 그대로 옮긴다 — `UNKNOWN` 항목은 **"실행 여부 미상 · 사용자 확인 대기"** 로 별도 줄에 적는다. 실행 또는 미실행 어느 쪽으로도 반올림하지 않는다. 상한 도달까지 PASS하지 못했으면 **최선 라운드**(마지막 라운드가 아닐 수 있다)의 초안과 그 라운드의 `critique_v<n>.md`, 남은 갭을 정직하게 제시하되 **승인 없이는 여전히 실행하지 않는다.**
+    - **보고:** postId · post URL · 실행/미실행 목록 · **read-back 수행분과 "재조회 수단 없음" 항목의 분리 기재**. **최종 보고와 사후 read-back의 근거는 기억이 아니라 `execution_state.md`다** — read-back 대상도 이 파일의 `DONE` 항목에서 뽑고, 보고의 실행/미실행 구분도 이 파일의 상태값을 그대로 옮긴다 — `UNKNOWN` 항목은 **"실행 여부 미상 · 사용자 확인 대기"** 로 별도 줄에 적는다. 실행 또는 미실행 어느 쪽으로도 반올림하지 않는다. 상한 도달까지 PASS하지 못했으면 **최선 라운드**(마지막 라운드가 아닐 수 있다)의 초안과 그 라운드의 `critique_v<n>.md`, 남은 갭을 정직하게 제시하되 **승인 없이는 여전히 실행하지 않는다.**
 
 **사용자 확인 게이트(전부 필수, 조용히 생략 불가):** (a) 3단계 tavlet 레포 핸드오프 확정, (b) 4단계 테넌트 확정, (c) 11단계 쓰기 승인 + 프로덕션·공개면 확인.
 
