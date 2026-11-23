@@ -17,9 +17,9 @@
 board_create_post · board_create_tasks · board_update_task_status · board_add_comment ·
 board_set_status · board_create_suggestion · board_create_release_draft
 
-당신이 쓸 수 있는 것은 **읽기 7종**뿐이다:
+당신이 쓸 수 있는 것은 **읽기 9종**뿐이다:
 board_list_boards · board_list_posts · board_get_post · board_get_taxonomy · board_list_statuses ·
-board_list_tasks · board_list_release_candidates.
+board_list_tasks · board_list_release_candidates · board_list_comments · board_get_suggestion.
 로컬 파일 읽기와 git 조회도 허용된다.
 그리고 `{SKILL_ROOT}/scripts/validate_drafts.py` 실행이 허용된다 — 초안 텍스트만 읽는 읽기 전용
 검증기이며 board_* 를 호출하지도 네트워크에 접속하지도 않는다(프로브 1).
@@ -52,7 +52,7 @@ LLM 은 평범한 산출물을 자신 있게 칭찬하는 경향이 있다. 당�
 
 - `{RUN_DIR}/spec.md` — 특히 §3 증거 기준, §6 보드·테넌트 컨텍스트, §8 Definition of Done
 - `{RUN_DIR}/drafts_v<n>.md` 전문 + `{RUN_DIR}/generator_report_v<n>.md`
-- `{SKILL_ROOT}/references/board-tool-contract.md` — 도구 14종 정본 계약 + §3-1 read-back 수단.
+- `{SKILL_ROOT}/references/board-tool-contract.md` — 도구 16종 정본 계약 + §3-1 read-back 수단 + §3-2 댓글 공개 범위.
   프로브 2(§id 실재 대조)·5(표기 감사)의 대조 기준
 - `{SKILL_ROOT}/scripts/validate_drafts.py` — 프로브 1 에서 **실행한다.** 읽기 전용 검증기
 - `{SKILL_ROOT}/references/rubric.md` — C1–C5 · 가중 · verdict 로직 · 하드 오버라이드
@@ -68,7 +68,8 @@ LLM 은 평범한 산출물을 자신 있게 칭찬하는 경향이 있다. 당�
 
 1. **결정론 검증 대조.** 다음을 **직접 실행한다:**
 
-       python3 {SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md
+       python3 {SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md \
+           --board-visibility <spec.md §6 의 boardVisibility, 없으면 UNKNOWN>
 
    - **generator_report_v<n>.md 에 실린 리포트를 옮겨 적지 않는다.** 직접 실행한 출력만이 근거다.
      Generator 가 리포트를 만든 뒤 초안을 고쳤을 수 있고, 그러면 보고서의 리포트는 낡은 것이다.
@@ -112,14 +113,15 @@ LLM 은 평범한 산출물을 자신 있게 칭찬하는 경향이 있다. 당�
 5. **공개면·게이트 표기 감사 — 초안 단위.** 쓰기 초안 **각각**에 대해 본다:
    (b) `- 인자:` 에 실린 JSON 이 **전송될 인자 전문**인가. 생략·요약·`…`·"이하 동일"이 있으면
        **미충족이다.** 이 JSON 이 그대로 11단계 미리보기로 가고 그대로 호출된다.
-   (e) `board_create_suggestion` · `board_create_release_draft` 초안에
-       **[반환 id만 · 재조회 수단 없음]** 표기가 있는가 (근거: board-tool-contract.md §3-1 —
-       이 둘은 결과를 조회하는 도구가 14종 안에 없다). 없으면 실행 후 "확인했다"는 허위 보고가 된다.
+   (e) `board_create_release_draft` 초안에 **[반환 id만 · 재조회 수단 없음]** 표기가 있는가
+       (근거: board-tool-contract.md §3-1 — 초안을 조회하는 도구가 없다). 없으면 실행 후 "확인했다"는
+       허위 보고가 된다. 대상이 공개·미상 보드인데 `board_add_comment` 인자에 `"internal": true` 가
+       없으면, 초안에 사용자의 공개 댓글 요청이 근거로 적혀 있는지 본다 — 없으면 미충족이다(계약 §3-2).
    (f) 대상이 **공개 보드**(spec.md §6 의 `boardVisibility` 가 `PUBLIC`, 또는 값이 없어 안전 측
        기본값으로 `PUBLIC` 인 경우)이면 초안 본문에 **미공개 내부 정보**가 있는지 본다 —
        내부 부채 상세 · 미공개 로드맵 · 고객명 · 내부 인력 배치. **이것은 정규식으로 판정되지 않는
        판단 항목이며 스크립트가 하지 못하는 부분이다.**
-       **`board_add_comment` 에는 팀 전용 플래그가 없다 — 모든 댓글은 공개다.**
+       **`board_add_comment` 는 기본이 공개 댓글이다. 공개·미상 보드에서는 `"internal": true`(팀 전용)를 싣는다(계약 §3-2) — 그래도 팀 전용 댓글은 org 구성원 전체가 읽으므로 이 판단 항목은 댓글에도 적용한다.**
    **(b)·(e) 는 1건이라도 누락되면 즉시 verdict = FAIL** (다른 점수 무관).
    **(f) 발견 시에도 즉시 verdict = FAIL.**
 

@@ -13,7 +13,7 @@ Claude Code 세션에서 **실제로 수행한 개발 작업**을 [tavlet](https
 - **분류·중복 제안** — 카테고리·태그 제안, 중복 후보 지목
 - **릴리스 초안** — 완료 post를 모아 체인지로그 초안 패키지 등록
 
-접근 경로는 MCP 서버가 노출하는 **board 도구 14종**뿐이다. REST를 직접 호출하거나 보드에 접근하는 우회 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다. (보드에 접근하지 않고 초안 텍스트만 읽는 검증기 `scripts/validate_drafts.py` 는 예외다 — 부작용을 낼 수 없다.)
+접근 경로는 MCP 서버의 board 도구뿐이며, 이 스킬은 서버가 노출하는 33종 중 **16종**만 쓴다. REST를 직접 호출하거나 보드에 접근하는 우회 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다. (보드에 접근하지 않고 초안 텍스트만 읽는 검증기 `scripts/validate_drafts.py` 는 예외다 — 부작용을 낼 수 없다.)
 
 ## 안전 장치
 
@@ -77,7 +77,7 @@ ln -s "$(pwd)/commands/tvl.md" ~/.claude/commands/tvl.md
 |---|---|
 | [`SKILL.md`](SKILL.md) | 에이전트 동작 정본 — 게이트·하네스·경로 규약 |
 | [`references/mcp-setup.md`](references/mcp-setup.md) | MCP 배선, `.tavlet.json` 스키마, 진단 분기 |
-| [`references/board-tool-contract.md`](references/board-tool-contract.md) | board 도구 14종 계약 |
+| [`references/board-tool-contract.md`](references/board-tool-contract.md) | board 도구 16종 계약 · read-back 수단 · 댓글 공개 범위 |
 | [`references/rubric.md`](references/rubric.md) | Evaluator 채점 루브릭 |
 | [`scripts/validate_drafts.py`](scripts/validate_drafts.py) | 초안 결정론 검증기 (읽기 전용) |
 

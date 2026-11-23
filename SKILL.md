@@ -1,12 +1,12 @@
 ---
 name: tavlet-tracker
-description: 임의의 Claude Code 세션(어느 레포에서든)에서 수행한 작업을 tavlet 피드백 보드에 MCP board 서버 도구 14종으로 등록·추적한다 — 기존 post 중복 탐색 → post 등록 → task 분해·상태 갱신 → 증거 기반 세션 다이제스트 댓글 → post 상태 전이 → 분류/중복 제안 → 릴리스 초안까지 전체 라이프사이클. 모든 쓰기는 정확한 인자 미리보기 + 사용자 명시 승인 게이트를 거친다. 기본 경로는 오케스트레이터가 초안을 직접 작성해 결정론 검증기(validate_drafts.py)를 통과시킨 뒤 곧바로 미리보기로 가는 것이며, Planner→Generator→Evaluator 하네스(증거 구체성·세션 사실성 적대 심사)는 원천 사실이 없는 소급 등록이나 다건 등록에서만 선택적으로 켠다. 멀티테넌트이므로 MCP 등록은 프로젝트 단위로 분리한다. 트리거 — KO "tavlet 등록", "보드에 올려", "작업 기록", "tvl", "타블렛 보드", "보드에 기록", "post 등록", "task 상태 갱신", "세션 결과 보드 반영", "릴리스 초안". EN "tavlet", "log work to tavlet", "track work on tavlet board", "register post on tavlet board".
-version: 1.3.0
+description: 임의의 Claude Code 세션(어느 레포에서든)에서 수행한 작업을 tavlet 피드백 보드에 MCP board 도구 16종(서버 노출 33종 중)으로 등록·추적한다 — 기존 post 중복 탐색 → post 등록 → task 분해·상태 갱신 → 증거 기반 세션 다이제스트 댓글 → post 상태 전이 → 분류/중복 제안 → 릴리스 초안까지 전체 라이프사이클. 모든 쓰기는 정확한 인자 미리보기 + 사용자 명시 승인 게이트를 거친다. 기본 경로는 오케스트레이터가 초안을 직접 작성해 결정론 검증기(validate_drafts.py)를 통과시킨 뒤 곧바로 미리보기로 가는 것이며, Planner→Generator→Evaluator 하네스(증거 구체성·세션 사실성 적대 심사)는 원천 사실이 없는 소급 등록이나 다건 등록에서만 선택적으로 켠다. 멀티테넌트이므로 MCP 등록은 프로젝트 단위로 분리한다. 트리거 — KO "tavlet 등록", "보드에 올려", "작업 기록", "tvl", "타블렛 보드", "보드에 기록", "post 등록", "task 상태 갱신", "세션 결과 보드 반영", "릴리스 초안". EN "tavlet", "log work to tavlet", "track work on tavlet board", "register post on tavlet board".
+version: 1.4.0
 ---
 
 # tavlet-tracker
 
-이 세션에서 **실제로 수행한 개발 작업**을 tavlet 피드백 보드에 등록·추적한다. 접근 경로는 MCP 서버가 노출하는 **도구 14종**뿐이다(정규 경로는 원격 `https://tavlet.io/api/mcp`, 등록은 `references/mcp-setup.md`). REST를 직접 호출하거나 **보드에 접근하는** 별도 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다. **보드에 접근하지 않고 초안 텍스트만 읽는 검증기는 여기 해당하지 않는다** — `scripts/validate_drafts.py` 가 유일한 예외이며, 네트워크도 `board_*` 호출도 없는 읽기 전용이다. 이 구분의 기준은 "스크립트인가"가 아니라 **"부작용을 낼 수 있는가"** 다.
+이 세션에서 **실제로 수행한 개발 작업**을 tavlet 피드백 보드에 등록·추적한다. 접근 경로는 MCP 서버의 `board_*` 도구뿐이며, 그중 이 스킬이 쓰는 **16종**은 `references/board-tool-contract.md` 가 정한다(경로는 원격 `https://tavlet.io/api/mcp`, 등록은 `references/mcp-setup.md`). REST를 직접 호출하거나 **보드에 접근하는** 별도 스크립트를 만들지 않는다 — 그것은 승인 게이트를 우회하는 두 번째 쓰기 경로다. **보드에 접근하지 않고 초안 텍스트만 읽는 검증기는 여기 해당하지 않는다** — `scripts/validate_drafts.py` 가 유일한 예외이며, 네트워크도 `board_*` 호출도 없는 읽기 전용이다. 이 구분의 기준은 "스크립트인가"가 아니라 **"부작용을 낼 수 있는가"** 다.
 
 모든 쓰기는 프로덕션 `tavlet.io`에 대한 **되돌리기 어려운 부작용**이고, 대상 보드 중 일부는 **외부 독자가 읽는 공개 면**이다. 그래서 이 스킬의 하네스는 "더 나은 글"이 아니라 **"등록해도 되는 글"** 을 만든다.
 
@@ -56,13 +56,13 @@ Planner · Generator · Evaluator는 **각각 별도의 `Agent` 호출**이며 *
 
 | 역할 | 프롬프트 | 입력 | 산출 | 도구 권한 |
 |---|---|---|---|---|
-| **Planner** | `references/planner-prompt.md` | 세션 사실 목록 + 정찰 결과 | `spec.md` — 보드 변경 계획 | 읽기 7종 + 로컬 파일·`git` |
-| **Generator** | `references/generator-prompt.md` | `spec.md` (+ 재시도 시 `critique_v<n-1>.md` · 승인된 PIVOT 이면 `design_memo_v<n-1>.md` · 리셋 이어받기면 그 라운드의 `handoff_v<n>*.md` **전부**) | `drafts_v<n>.md` + `generator_report_v<n>.md` | 읽기 7종 + 로컬 파일·`git` + `scripts/validate_drafts.py` 실행. **쓰기 7종 호출 금지** |
-| **Evaluator** | `references/evaluator-prompt.md` | `spec.md` + `drafts_v<n>.md` + `generator_report_v<n>.md` (+ 2라운드부터 `critique_v<n-1>.md` · `drafts_v<n-1>.md`) | `critique_v<n>.md` (PASS/FAIL) | 읽기 7종 + 로컬 파일·`git` + `scripts/validate_drafts.py` 실행. **쓰기 7종 호출 금지** |
+| **Planner** | `references/planner-prompt.md` | 세션 사실 목록 + 정찰 결과 | `spec.md` — 보드 변경 계획 | 읽기 9종 + 로컬 파일·`git` |
+| **Generator** | `references/generator-prompt.md` | `spec.md` (+ 재시도 시 `critique_v<n-1>.md` · 승인된 PIVOT 이면 `design_memo_v<n-1>.md` · 리셋 이어받기면 그 라운드의 `handoff_v<n>*.md` **전부**) | `drafts_v<n>.md` + `generator_report_v<n>.md` | 읽기 9종 + 로컬 파일·`git` + `scripts/validate_drafts.py` 실행. **쓰기 7종 호출 금지** |
+| **Evaluator** | `references/evaluator-prompt.md` | `spec.md` + `drafts_v<n>.md` + `generator_report_v<n>.md` (+ 2라운드부터 `critique_v<n-1>.md` · `drafts_v<n-1>.md`) | `critique_v<n>.md` (PASS/FAIL) | 읽기 9종 + 로컬 파일·`git` + `scripts/validate_drafts.py` 실행. **쓰기 7종 호출 금지** |
 
 **쓰기 7종을 실제로 호출하는 것은 오케스트레이터(이 스킬을 실행하는 메인 세션)뿐이며, 사용자 승인 이후에만이다.**
 
-세 프롬프트는 각각 자기완결이다. 단, 셋 모두 `references/board-tool-contract.md`를 읽는다 — 14종 계약을 세 곳에 복사하면 갈라진다. 표의 상대 경로는 **다음 절의 `SKILL_ROOT` 기준**이며, 디스패치 시점에 절대 경로로 치환해 넘긴다.
+세 프롬프트는 각각 자기완결이다. 단, 셋 모두 `references/board-tool-contract.md`를 읽는다 — 16종 계약을 세 곳에 복사하면 갈라진다. 표의 상대 경로는 **다음 절의 `SKILL_ROOT` 기준**이며, 디스패치 시점에 절대 경로로 치환해 넘긴다.
 
 ## 경로 규약 — `SKILL_ROOT` · `RUN_DIR`
 
@@ -136,13 +136,13 @@ RUN_DIR    = <절대 경로>
 3. **【G2】 폐기 — 건너뛴다.** tavlet 레포 핸드오프 게이트였다. 판정 조건과 핸드오프 대상이 모두 `ff3fa1f` 에서 사라져 이 단계는 수행하지 않는다(위 「경계 규칙」).
 4. **【G3】 테넌트 확정 게이트.** `.tavlet.json` 로드(없으면 스키마대로 생성 제안 — gitignore 등재 확인 선행). 2단계의 `board_list_boards()` 반환에 대상 `boardId`가 **실재하는지** 대조하고 `baseUrl`·`boardVisibility`를 확정한다. **확정 전 쓰기 금지.**
 5. **세션 사실 수집.** 이 세션에서 **실제로 수행·관측된 것만** 모은다 — 변경 파일 경로(가능하면 `파일:라인`), `git log --oneline -n` / `git show --stat <hash>`로 확인한 커밋 해시, 실제 실행한 명령과 그 출력, 에러 원문. 확인하지 못한 것은 **"미검증"으로 분류**하고 삭제하지 않는다. **추정 금지.** 1차 스크럽(G7)을 여기서 수행한다.
-6. **【G4】 읽기 정찰 게이트.** `board_list_posts`를 **서로 다른 `q` 2회 이상** 호출하고 후보를 `board_get_post`로 본문 대조해 **신규/기존을 판정**한다. 필요에 따라 `board_get_taxonomy`(실제 카테고리·태그 id), `board_list_statuses`(실제 컬럼), `board_list_tasks`(현재 task 분포)를 조회한다. **이 정찰 없이 `board_create_post` 경로로 갈 수 없다.**
-7. **초안 직접 작성 (기본 경로).** 오케스트레이터가 5·6단계 결과로 `{RUN_DIR}/drafts_v1.md` 를 **직접** 쓴다 — 형식은 `references/generator-prompt.md` 의 초안 규약(도구별 4종 세트: 대상 · 정확한 인자 JSON · 증거 출처 · 선행 조건)과 `references/board-tool-contract.md` 를 그대로 따르고, 세션 사실에 없는 명령·출력은 만들지 않는다(요약이면 "요약(원문 아님)" 을 표기). 쓴 뒤 `python3 {SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v1.md` 를 실행해 **ERROR 0** 을 확인하고, `references/rubric.md` 의 C1(증거 구체성)·C2(세션 사실성)를 스스로 점검한 뒤 **11단계로 간다.** 8~10단계는 건너뛴다.
+6. **【G4】 읽기 정찰 게이트.** `board_list_posts`를 **서로 다른 `q` 2회 이상** 호출하고 후보를 `board_get_post`로 본문 대조해 **신규/기존을 판정**한다. 반환의 `nextOffset` 이 null 이 아니면 아직 안 본 글이 있으므로 `offset` 으로 이어 읽거나 `q` 를 좁힌다 — 첫 쪽만 보고 "중복 없음"으로 판정하지 않는다. 필요에 따라 `board_get_taxonomy`(실제 카테고리·태그 id), `board_list_statuses`(실제 컬럼), `board_list_tasks`(현재 task 분포)를 조회한다. **이 정찰 없이 `board_create_post` 경로로 갈 수 없다.**
+7. **초안 직접 작성 (기본 경로).** 오케스트레이터가 5·6단계 결과로 `{RUN_DIR}/drafts_v1.md` 를 **직접** 쓴다 — 형식은 `references/generator-prompt.md` 의 초안 규약(도구별 4종 세트: 대상 · 정확한 인자 JSON · 증거 출처 · 선행 조건)과 `references/board-tool-contract.md` 를 그대로 따르고, 세션 사실에 없는 명령·출력은 만들지 않는다(요약이면 "요약(원문 아님)" 을 표기). 쓴 뒤 `python3 {SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v1.md --board-visibility <boardVisibility, 없으면 UNKNOWN>` 을 실행해 **ERROR 0** 을 확인하고, `references/rubric.md` 의 C1(증거 구체성)·C2(세션 사실성)를 스스로 점검한 뒤 **11단계로 간다.** 8~10단계는 건너뛴다.
    **(하네스 경로일 때만)** 직접 작성 대신 **Planner 디스패치** (`Agent`, `{SKILL_ROOT}/references/planner-prompt.md`) — 프롬프트 앞에 **디스패치 주입 블록**을 붙이고 5·6단계 결과를 함께 전달 → `{RUN_DIR}/spec.md`(보드 변경 계획). `NEED_EVIDENCE`가 오면 사용자에게 그 증거를 요청하고 5단계로 되돌아간다. `BLOCKED: <경로>`가 오면 **경로를 고쳐 재디스패치**한다. 세션 사실이 실행 중 바뀌면(예: 타 세션의 푸시) spec·drafts·critique 세 곳에 전파해야 한다 — 이것이 하네스 경로의 비용이다. 이어서 8~10단계로 간다.
-8. **(하네스 경로) Generator 디스패치** (`Agent`, `{SKILL_ROOT}/references/generator-prompt.md`) — 주입 블록 + `{RUN_DIR}/spec.md` → `{RUN_DIR}/drafts_v<n>.md` + `{RUN_DIR}/generator_report_v<n>.md`. **단일 연속 세션(스프린트 없음). 쓰기 도구 호출 없음.** **제출 전 `{SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md` 를 돌려 ERROR 0 을 만든 뒤에야 제출한다** — 계약·길이·enum·누출·좌표 카운트는 결정론적으로 판정되므로 Evaluator 까지 끌고 가지 않는다. `HANDOFF_NEEDED: <handoff 파일명>`이 오면 **새 Generator 세션**을 띄운다(압축 금지). **그 라운드의 handoff 파일을 전부, 생성 순서대로 넘긴다** — 주입 블록 읽을-파일 목록에 각각의 절대 경로를 올려 디스패치한다. 두 번째 리셋의 `handoff_v<n>b.md`는 첫 번째를 **대체하지 않는다**: 앞 파일에만 있는 완성 초안 목록이 누락되면 새 세션이 그 초안을 다시 쓴다. 이 시점에는 쓰기가 아직 한 건도 실행되지 않았으므로 handoff 에 **실행 기록은 없다** — 그것은 12단계 `execution_state.md`의 소관이다. `BLOCKED`도 같은 처리 — 경로를 고쳐 재디스패치.
+8. **(하네스 경로) Generator 디스패치** (`Agent`, `{SKILL_ROOT}/references/generator-prompt.md`) — 주입 블록 + `{RUN_DIR}/spec.md` → `{RUN_DIR}/drafts_v<n>.md` + `{RUN_DIR}/generator_report_v<n>.md`. **단일 연속 세션(스프린트 없음). 쓰기 도구 호출 없음.** **제출 전 `{SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md --board-visibility <값>` 을 돌려 ERROR 0 을 만든 뒤에야 제출한다** — 계약·길이·enum·누출·좌표 카운트는 결정론적으로 판정되므로 Evaluator 까지 끌고 가지 않는다. `HANDOFF_NEEDED: <handoff 파일명>`이 오면 **새 Generator 세션**을 띄운다(압축 금지). **그 라운드의 handoff 파일을 전부, 생성 순서대로 넘긴다** — 주입 블록 읽을-파일 목록에 각각의 절대 경로를 올려 디스패치한다. 두 번째 리셋의 `handoff_v<n>b.md`는 첫 번째를 **대체하지 않는다**: 앞 파일에만 있는 완성 초안 목록이 누락되면 새 세션이 그 초안을 다시 쓴다. 이 시점에는 쓰기가 아직 한 건도 실행되지 않았으므로 handoff 에 **실행 기록은 없다** — 그것은 12단계 `execution_state.md`의 소관이다. `BLOCKED`도 같은 처리 — 경로를 고쳐 재디스패치.
 9. **(하네스 경로) Evaluator 디스패치** (`Agent`, `{SKILL_ROOT}/references/evaluator-prompt.md`) — 주입 블록 + `spec.md` + `drafts_v<n>.md` + `generator_report_v<n>.md` → 적대적 프로브 5종 실행 → `{RUN_DIR}/critique_v<n>.md`(PASS/FAIL). Evaluator는 읽기 도구와 `scripts/validate_drafts.py`(읽기 전용)만 쓴다. `BLOCKED`가 오면 **그 라운드의 채점을 채택하지 않는다** — 루브릭·앵커를 못 읽은 채점은 보정되지 않은 채점이다.
 10. **(하네스 경로) 루프 제어.** PASS → 11단계. FAIL이고 라운드 < 상한 → `critique_v<n>.md`를 넘겨 8단계로(Strategic Decision: REFINE / PIVOT / ESCALATE). `REDIRECT:` 나 `design_memo_v<n>.md`가 있으면 피벗 전에 승인하거나 수정하고, **승인한 메모의 절대 경로를 다음 라운드 주입 블록에 올려 넘긴다**(다음 라운드 관점의 이름은 `design_memo_v<n-1>.md`다). 넘기지 않으면 다음 라운드 Generator 는 승인 사실을 모른 채 방향 전환 금지 하드룰에 걸린다. **이전 라운드의 `critique_v*.md`·`drafts_v*.md`를 지우거나 덮어쓰지 않는다** — 최선 라운드 판정의 근거다. **상한은 2다** — 2라운드에서도 PASS 가 아니면 더 돌리지 않고 12단계의 최선 라운드 보고 경로로 간다. `DEADLOCK`이면 사용자에게 증거 보강 또는 스펙 판단을 요청하고 멈춘다.
-11. **【G5·G6·G7】 승인 게이트 — 필수·대체 불가.** 초안(직접 경로면 7단계의 `drafts_v1.md`, 하네스 경로면 PASS된 라운드의 초안)을 사용자에게 제시한다. 쓰기 7종 **각각**에 대해 **전송될 정확한 인자 JSON + 대상 보드명/URL**을 보여준다(**요약본 금지**). `baseUrl`이 localhost가 아니면 **"프로덕션 대상"**, `boardVisibility`가 `PUBLIC`이면 **"외부 독자가 읽는 공개 보드 — 댓글도 공개"** 경고를 함께 표시하고 별도 확인을 받는다. `board_create_suggestion`·`board_create_release_draft` 항목에는 **"반환 id만 · 재조회 수단 없음"** 을 함께 표기한다(아래 12단계). 스크럽 결과를 보고한다. **사용자의 명시 승인 이전에는 어떤 쓰기 도구도 호출하지 않는다.** 수정 요청이 오면 반영 후 다시 미리보기한다.
+11. **【G5·G6·G7】 승인 게이트 — 필수·대체 불가.** 초안(직접 경로면 7단계의 `drafts_v1.md`, 하네스 경로면 PASS된 라운드의 초안)을 사용자에게 제시한다. 쓰기 7종 **각각**에 대해 **전송될 정확한 인자 JSON + 대상 보드명/URL**을 보여준다(**요약본 금지**). `baseUrl`이 localhost가 아니면 **"프로덕션 대상"**, `boardVisibility`가 `PUBLIC`(또는 미상)이면 **"외부 독자가 읽는 공개 보드"** 경고를 함께 표시하고 별도 확인을 받는다. 그 보드의 `board_add_comment` 는 `"internal": true`(팀 전용)를 기본으로 싣는다 — 사용자가 공개 댓글을 원해 뺄 때만 **"외부 독자가 읽는 공개 댓글"** 을 표기한다(`references/board-tool-contract.md` §3-2). `board_create_release_draft` 항목에는 **"반환 id만 · 재조회 수단 없음"** 을 함께 표기한다(아래 12단계). 스크럽 결과를 보고한다. **사용자의 명시 승인 이전에는 어떤 쓰기 도구도 호출하지 않는다.** 수정 요청이 오면 반영 후 다시 미리보기한다.
 12. **실행 → 사후 검증 → 보고.** 이 단계의 작성자는 **오케스트레이터(이 세션)** 다. 쓰기를 호출하는 유일한 주체이므로, 무엇이 실제로 실행됐는지 아는 주체도 여기뿐이다.
     - **【첫 쓰기 이전】 `{RUN_DIR}/execution_state.md` 초기화.** 승인된 쓰기 **전건**을 실행 순서대로 적고 전 항목을 `PENDING`으로 둔다(재개하는 **다른** 세션이 읽을 파일이므로 형식을 임의로 바꾸지 않는다. 항목당 아래 블록 4줄 — 인자 JSON 에 `|` 가 흔히 섞이므로 한 줄 구분자 표는 쓰지 않는다:
 
@@ -151,22 +151,22 @@ RUN_DIR    = <절대 경로>
       상태: PENDING
       인자: <승인된 JSON 한 줄>
       기준선: <board_add_comment 항목만. **초기화 시점에는 반드시 "미기입"으로 두고, 그 항목을 호출하기 직전에**
-               board_get_post 로 읽은 commentCount 로 채운다. 그 외 항목은 "해당 없음">
+               board_list_comments 에서 승인 본문과 같은 댓글의 개수(보통 0)를 세어 채운다. 그 외 항목은 "해당 없음">
       ```
 
-      `기준선`은 재개 시 댓글 반영 여부를 판정하는 **유일한 수단**이다. 값이 없으면(`미기입`) 그 항목은 대조가 아니라 사용자 확인으로 간다. **초기화 시점의 값을 미리 적어 두지 않는다** — 그 사이에 제3자가 단 댓글이 증가분을 만들어, 실행되지 않은 댓글을 "반영됨"으로 오판하게 한다). **이 파일을 만들기 전에 첫 쓰기를 호출하지 않는다.** `PENDING`·`DONE`·`FAILED`·`CANCELLED`·`UNKNOWN`은 **이 파일 안에서만 쓰는 실행 추적 라벨**이며 board 의 task status(`TODO`·`DOING`·`DONE`·`DROPPED`)·post status 와 **다른 집합**이다 — 보드로 전송하지 않는다.
+      `기준선`은 재개 시 댓글 반영 여부를 판정하는 기준이다 — `board_list_comments` 에서 같은 본문 댓글이 기준선보다 많으면 반영이다. 값이 없으면(`미기입`) 같은 본문 댓글이 원래 있었는지 알 수 없으므로 그 항목은 대조가 아니라 사용자 확인으로 간다. **초기화 시점의 값을 미리 적어 두지 않는다** — 호출 직전에 세야 실행 시점의 상태와 맞는다). **이 파일을 만들기 전에 첫 쓰기를 호출하지 않는다.** `PENDING`·`DONE`·`FAILED`·`CANCELLED`·`UNKNOWN`은 **이 파일 안에서만 쓰는 실행 추적 라벨**이며 board 의 task status(`TODO`·`DOING`·`DONE`·`DROPPED`)·post status 와 **다른 집합**이다 — 보드로 전송하지 않는다.
     - **실행:** 승인된 인자를 **그대로**, 의존 순서대로 호출한다. **각 호출 직후 즉시** 해당 항목을 `DONE(<반환 id/URL>)` 또는 `FAILED(<반환 원문 그대로>)`로 갱신한다 — 다음 호출로 넘어가기 전에 갱신한다. 갱신 전에 세션이 끊기면 그 항목은 `PENDING`으로 남는데, **`PENDING`은 "실행 안 됨"이 아니라 "실행 여부 미상"이다** — 재개 시 아래 대조 절차로만 판정한다.
-    - **실패 판정:** 반환이 `isError`이거나 반환 텍스트가 `Error:` 로 시작하거나 `[board] <숫자 status> <METHOD> <path>:` 패턴을 포함하면 **실패다.** 원문을 그대로 표면화하고 **중단** — 남은 항목을 전부 `CANCELLED`로 표시한 뒤 후속 쓰기를 취소하고, 이미 실행된 것과 취소된 것을 분리해 보고한다.
+    - **실패 판정:** 반환이 `isError`이거나 파싱한 JSON이 `{"ok": false, …}` 이면 **실패다**(`references/board-tool-contract.md` §0). 원문을 그대로 표면화하고 **중단** — 남은 항목을 전부 `CANCELLED`로 표시한 뒤 후속 쓰기를 취소하고, 이미 실행된 것과 취소된 것을 분리해 보고한다.
     - **중단 후 재개.** 실행 도중 세션이 끊기거나 컨텍스트를 리셋해야 하면, 재개하는 세션은 **`execution_state.md`를 가장 먼저 읽는다.** `DONE` 항목은 **절대 재실행하지 않는다.** `FAILED`로 중단된 실행이면 `CANCELLED` 항목을 그냥 이어가지 않는다 — 실패 원문을 사용자에게 표면화하고 **11단계 승인 게이트로 돌아간다.** 중단은 의도된 정지이지 일시 중지가 아니다.
-      **`PENDING` 잔존 대조(필수).** `PENDING` 항목이 하나라도 남아 있으면 — 그리고 `execution_state.md` 자체가 없는데 쓰기가 이미 나갔을 가능성이 있으면 — **그대로 실행하지 않는다.** 먼저 읽기 도구(`board_list_posts` · `board_get_post` · `board_list_tasks` · `board_list_release_candidates`)로 그 쓰기가 보드에 반영됐는지 확인한다. **어떤 도구로 무엇을 대조할 수 있는지는 `references/board-tool-contract.md` §3-1 이 정본이다** — 여기서 다시 나누지 않는다. 결과는 셋 중 하나다:
+      **`PENDING` 잔존 대조(필수).** `PENDING` 항목이 하나라도 남아 있으면 — 그리고 `execution_state.md` 자체가 없는데 쓰기가 이미 나갔을 가능성이 있으면 — **그대로 실행하지 않는다.** 먼저 읽기 도구(`board_list_posts` · `board_get_post` · `board_list_tasks` · `board_list_comments` · `board_get_suggestion` · `board_list_release_candidates`)로 그 쓰기가 보드에 반영됐는지 확인한다. **어떤 도구로 무엇을 대조할 수 있는지는 `references/board-tool-contract.md` §3-1 이 정본이다** — 여기서 다시 나누지 않는다. 결과는 셋 중 하나다:
       - **반영 확인** → 항목을 `DONE(<확인한 id/URL> · 사후 대조로 확정)`으로 고치고 건너뛴다.
       - **미반영 확인** → 그 항목만 실행한다.
-      - **판정 불가** → 재실행하지 않는다. 항목을 `UNKNOWN(<판정 불가 사유> · 사용자 확인 필요)`로 적고 사용자에게 실행 여부를 묻는다. 답을 받으면 `DONE(<사용자 확인>)` 또는 실행으로 확정한다. 판정 불가가 나오는 자리는 §3-1 기준으로 `board_create_suggestion`(조회 도구 부재)과 **기준선이 없는 `board_add_comment`** 다 — `commentCount` 만으로는 그 댓글이 내가 쓴 것인지 남이 쓴 것인지 구별되지 않으므로, 기준선 없는 증가를 반영으로 판정하면 거짓 완료 보고(C2 위반)가 된다. `board_create_release_draft` 는 **판정 불가가 아니다** — 포함된 post 의 `affectedRelease` 와 `board_list_release_candidates` 소거로 확인한다. 참고로 초안이 이미 등록된 뒤의 재실행은 **409 가 아니라 400** 으로 막힌다 — 연결된 post 가 `affectedReleaseId` 를 이미 가지므로 `유효하지 않은 post 입니다(프로젝트 밖·미완료·기할당·병합됨)` 이 먼저 나온다(`services/releases.ts:426-434`). `version` 중복 409 는 그 검사를 통과한 **다른** post 묶음으로 같은 version 을 다시 낼 때의 얘기다. 어느 쪽이든 재실행 판단의 근거는 대조이지 서버 거절이 아니다.
+      - **판정 불가** → 재실행하지 않는다. 항목을 `UNKNOWN(<판정 불가 사유> · 사용자 확인 필요)`로 적고 사용자에게 실행 여부를 묻는다. 답을 받으면 `DONE(<사용자 확인>)` 또는 실행으로 확정한다. 판정 불가가 나오는 자리는 **기준선이 없는 `board_add_comment`** 다 — 같은 본문 댓글이 원래 있었는지 모르면, 찾은 댓글이 이번 실행의 것인지 단정할 수 없고 그것을 반영으로 판정하면 거짓 완료 보고(C2 위반)가 된다. `board_create_suggestion` 은 `board_get_suggestion` 의 최신 제안이 승인한 `rationale` 과 같은지로 판정한다. `board_create_release_draft` 는 **판정 불가가 아니다** — 포함된 post 의 `affectedRelease` 와 `board_list_release_candidates` 소거로 확인한다. 참고로 초안이 이미 등록된 뒤의 재실행은 **409 가 아니라 400** 으로 막힌다 — 연결된 post 가 `affectedReleaseId` 를 이미 가지므로 `유효하지 않은 post 입니다(프로젝트 밖·미완료·기할당·병합됨)` 이 먼저 나온다(`services/releases.ts:426-434`). `version` 중복 409 는 그 검사를 통과한 **다른** post 묶음으로 같은 version 을 다시 낼 때의 얘기다. 어느 쪽이든 재실행 판단의 근거는 대조이지 서버 거절이 아니다.
 
       확인 없는 재실행이 중복 post·중복 댓글을 프로덕션에 남긴다. 묻는 쪽이 언제나 옳다.
-    - **사후 read-back — 쓰기 7종 중 5종만 가능하다.** `board_create_post`·`board_create_tasks`·`board_update_task_status`·`board_add_comment`·`board_set_status`는 `board_get_post` · `board_list_tasks`로 재조회해 승인 내용과 대조한다(단 댓글은 `commentCount` 증가까지만 확인되고 **본문은 재조회되지 않는다**). 불일치는 숨기지 않고 그대로 보고한다.
-    - **read-back 불가 2종.** `board_create_suggestion`·`board_create_release_draft`는 결과를 조회하는 도구가 14종 안에 **없다.** 이 둘은 **반환된 id를 그대로 보고하고 "재조회 수단 없음"을 명시**한다 — 단 중단 후 사용자 확인으로 확정된 항목은 반환 id 가 세션과 함께 소실됐으므로 `DONE(id 미상 · 사용자 확인 · 재조회 수단 없음)`으로 적는다. 없는 id 를 지어내지 않는다 — `execution_state.md`에도 `DONE(<반환 id> · 재조회 수단 없음)`으로 적어 read-back 수행분과 구분한다. 도구별 수단과 근거는 `references/board-tool-contract.md` §3-1. **검증하지 않은 것을 검증했다고 보고하는 것은 이 스킬의 C2 위반이다.**
-      **다만 세션에 계약 밖 조회 도구가 노출되어 있으면 그것을 쓴다** — 원격 서버는 14종보다 많은 도구를 노출하며 `board_get_suggestion({postId})` 가 그 하나다(2026-09-04 실측 18종). 확인했다면 "재조회 수단 없음" 대신 그 결과를 적는다. 이 규칙의 취지는 없는 확인을 했다고 적지 않는 것이지, 있는 도구를 쓰지 말라는 것이 아니다.
+    - **사후 read-back — 쓰기 7종 중 6종이 가능하다.** `board_create_post`·`board_create_tasks`·`board_update_task_status`·`board_add_comment`·`board_set_status`·`board_create_suggestion`은 `board_get_post` · `board_list_tasks` · `board_list_comments` · `board_get_suggestion`으로 재조회해 승인 내용과 대조한다(댓글은 본문·`internal` 까지 대조한다). 불일치는 숨기지 않고 그대로 보고한다.
+    - **read-back 불가 1종.** `board_create_release_draft`는 초안을 조회하는 도구가 **없다.** **반환된 id를 그대로 보고하고 "재조회 수단 없음"을 명시**한다 — 단 중단 후 사용자 확인으로 확정된 항목은 반환 id 가 세션과 함께 소실됐으므로 `DONE(id 미상 · 사용자 확인 · 재조회 수단 없음)`으로 적는다. 없는 id 를 지어내지 않는다 — `execution_state.md`에도 `DONE(<반환 id> · 재조회 수단 없음)`으로 적어 read-back 수행분과 구분한다. 도구별 수단과 근거는 `references/board-tool-contract.md` §3-1. **검증하지 않은 것을 검증했다고 보고하는 것은 이 스킬의 C2 위반이다.**
+      간접 확인 2종(포함된 post 의 `affectedRelease` · `board_list_release_candidates` 소거)을 했다면 **간접임을 명시**한다.
     - **보고:** postId · post URL · 커밋 트레일러 `[tv:<taskId>]` · 실행/미실행 목록 · **read-back 수행분과 "재조회 수단 없음" 항목의 분리 기재**. **최종 보고와 사후 read-back의 근거는 기억이 아니라 `execution_state.md`다** — read-back 대상도 이 파일의 `DONE` 항목에서 뽑고, 보고의 실행/미실행 구분도 이 파일의 상태값을 그대로 옮긴다 — `UNKNOWN` 항목은 **"실행 여부 미상 · 사용자 확인 대기"** 로 별도 줄에 적는다. 실행 또는 미실행 어느 쪽으로도 반올림하지 않는다. 상한 도달까지 PASS하지 못했으면 **최선 라운드**(마지막 라운드가 아닐 수 있다)의 초안과 그 라운드의 `critique_v<n>.md`, 남은 갭을 정직하게 제시하되 **승인 없이는 여전히 실행하지 않는다.**
 
 **사용자 확인 게이트(전부 필수, 조용히 생략 불가):** (a) 3단계 tavlet 레포 핸드오프 확정, (b) 4단계 테넌트 확정, (c) 11단계 쓰기 승인 + 프로덕션·공개면 확인.
@@ -183,7 +183,7 @@ RUN_DIR    = <절대 경로>
 | **G6** | **프로덕션·공개면 확인** | `baseUrl`이 localhost가 아님(= 프로덕션 `tavlet.io`) 또는 대상 보드가 **공개 가시성** | 미리보기에 "프로덕션 대상"·"외부 독자가 읽는 공개 보드" 경고를 명시하고 **별도 확인**을 받는다 |
 | **G7** | **비밀·개인정보 스크럽** | 초안 본문에 PAT(`tvl_`/`hhb_` 접두사)·`.env` 값·API 키·Bearer 토큰·개인 이메일·사용자 홈 절대경로·(공개 보드 대상 시) 미공개 내부 정보가 잔존 | 미리보기 **이전에** 스크럽 스캔을 수행하고 결과를 보고. 잔존 시 하드 FAIL. 기계 판정분은 `scripts/validate_drafts.py` 의 `G7-LEAK` 전건이고, **공개 보드 대상의 미공개 내부 정보는 사람 판단 영역이다** |
 
-**G6·G7이 함께 필요한 이유:** 이 스킬은 세션의 **에러 원문·로그·명령 출력**을 그대로 보드 본문으로 옮긴다. 이 재료는 시크릿·토큰·개인정보를 자주 포함한다. 그리고 MCP `board_add_comment`는 `{ postId, body }` 만 노출한다 — **`internal`(팀 전용) 플래그가 없으므로 MCP 경유 댓글은 전부 공개 댓글이다**(근거: 원격 `src/lib/mcp/board-tools.ts` 의 `board_add_comment` inputSchema 가 `{ postId, body }` 뿐이고 서비스에 `{ body }` 만 전달. stdio 판도 동일 — `server.ts` 도구 설명 "게시글에 댓글 작성(공개)", `board-client.ts:56-57`. `src/lib/validation/posts.ts:47`에 `internal` 필드가 존재하지만 MCP 도구는 노출하지 않는다). 그리고 많은 조직이 **공개 로드맵 보드**를 운영한다 — `.tavlet.json` 의 `boardVisibility` 가 `PUBLIC` 이면 이 스킬이 쓰는 모든 본문·댓글을 외부 독자가 읽는다. 스크럽 게이트 없이는 이 스킬이 유출 경로가 된다.
+**G6·G7이 함께 필요한 이유:** 이 스킬은 세션의 **에러 원문·로그·명령 출력**을 그대로 보드 본문으로 옮긴다. 이 재료는 시크릿·토큰·개인정보를 자주 포함한다. 그리고 많은 조직이 **공개 로드맵 보드**를 운영한다 — `.tavlet.json` 의 `boardVisibility` 가 `PUBLIC` 이면 이 스킬이 쓰는 post 본문·task 를 외부 독자가 읽는다. 댓글은 `internal: true`(팀 전용, DEVELOPER↑)로 가릴 수 있어 공개·미상 보드에서는 그것을 기본으로 싣지만(`references/board-tool-contract.md` §3-2), post 본문은 가릴 수단이 없다. 그리고 팀 전용 댓글도 org 구성원 전체가 읽는다. 그래서 `internal` 여부와 무관하게 스크럽 게이트를 지난다 — 그것 없이는 이 스킬이 유출 경로가 된다.
 
 **보드 가시성은 어떤 `board_*` 도구도 반환하지 않는다.** `board_list_boards`가 주는 `kind`는 `FEATURE`·`BUG`·`FEEDBACK`(보드 종류)이지 공개 여부가 아니다. 공개 여부의 정본은 `.tavlet.json`의 `boardVisibility` 이며, 그 값이 없으면 **`PUBLIC`으로 간주(안전 측 기본값)** 하고 사용자에게 확인한다. 자세한 근거는 `references/board-tool-contract.md` §가시성.
 
@@ -197,19 +197,19 @@ RUN_DIR    = <절대 경로>
 - **(c)** 모든 호출이 명시 승인 **이후**로 배치되어 있다 (11·12단계)
 - **(d)** 승인 후 인자가 바뀌면 **재-미리보기**한다 (11단계)
 
-이 셋을 Evaluator 프로브로 두면 **라운드마다 같은 답이 나와 형해화된다**(v1.1.0 의 프로브 6이 그랬다). 초안마다 달라지는 것 — 인자가 **전문**인지, read-back 불가 2종 표기가 있는지 — 만 프로브 5가 본다. 절차 불변식이 깨지면 그것은 라운드 안의 채점 문제가 아니라 **스킬 자체의 결함**이므로 여기서 멈추고 고친다.
+이 셋을 Evaluator 프로브로 두면 **라운드마다 같은 답이 나와 형해화된다**(v1.1.0 의 프로브 6이 그랬다). 초안마다 달라지는 것 — 인자가 **전문**인지, read-back 불가 1종 표기가 있는지, 공개 보드 댓글의 `internal` 이 맞는지 — 만 프로브 5가 본다. 절차 불변식이 깨지면 그것은 라운드 안의 채점 문제가 아니라 **스킬 자체의 결함**이므로 여기서 멈추고 고친다.
 
 | # | 쓰기 도구 | 미리보기에 반드시 포함할 것 | 호출 시점 |
 |---|---|---|---|
 | 1 | `board_create_post` | 전체 `{ title, body, boardId, categoryIds?, tagNames? }` JSON + 보드명·보드 URL + 프로덕션/공개면 표기 | 승인 후 |
 | 2 | `board_create_tasks` | 전체 `{ postId, items:[{title, detail?}] }` JSON (items **전건**, 요약 금지) | 승인 후 · post 생성 성공 후 |
 | 3 | `board_update_task_status` | 전체 `{ postId, taskId, status }` JSON + 해당 task의 현재 상태 | 승인 후 |
-| 4 | `board_add_comment` | 전체 `{ postId, body }` JSON (body **전문**) + **"이 댓글은 공개"** 표기 | 승인 후 |
+| 4 | `board_add_comment` | 전체 `{ postId, body, internal? }` JSON (body **전문**) + 공개 범위 표기 — `internal: true` 면 **"팀 전용 댓글"**, 없으면 **"공개 댓글"**(공개·미상 보드에서 빼려면 사용자 요청과 G6 별도 확인 필요, §3-2) | 승인 후 |
 | 5 | `board_set_status` | 전체 `{ postId, status }` 또는 `{ postId, columnId }` JSON + 현재 상태 + task 상태 분포 | 승인 후 · task 전이 후 |
-| 6 | `board_create_suggestion` | 전체 `{ postId, rationale, categoryIds?, tagIds?, kindNote?, priority?, duplicates? }` JSON + **"반환 id만 · 재조회 수단 없음"** 표기(`board_get_suggestion` 이 노출돼 있으면 그것으로 확인한다). **`categoryIds`·`tagIds` 가 둘 다 비면 서버가 거절하므로 그 상태로는 미리보기에 올리지 않는다** | 승인 후 |
+| 6 | `board_create_suggestion` | 전체 `{ postId, rationale, categoryIds?, tagIds?, kindNote?, priority? }` JSON(`duplicates` 는 서버에 없는 인자다 — 중복 후보는 `rationale` 에 적는다). 실행 후 `board_get_suggestion` 으로 확인한다. **`categoryIds`·`tagIds` 가 둘 다 비면 서버가 거절하므로 그 상태로는 미리보기에 올리지 않는다** | 승인 후 |
 | 7 | `board_create_release_draft` | 전체 `{ projectId, version, name?, body, entries:[{ title, body, type, postIds }] }` JSON + **"발행되지 않는 초안"** · **"반환 id만 · 재조회 수단 없음"** 표기 | 승인 후 |
 
-**읽기 7종**(`board_list_boards` · `board_list_posts` · `board_get_post` · `board_get_taxonomy` · `board_list_statuses` · `board_list_tasks` · `board_list_release_candidates`)은 게이트 없이 자유롭게 호출한다.
+**읽기 9종**(`board_list_boards` · `board_list_posts` · `board_get_post` · `board_get_taxonomy` · `board_list_statuses` · `board_list_tasks` · `board_list_release_candidates` · `board_list_comments` · `board_get_suggestion`)은 게이트 없이 자유롭게 호출한다.
 
 ## 파일 핸드오프 계약
 
@@ -296,7 +296,7 @@ Opus 5에서는 단일 연속 Generator가 초안 묶음을 완주하는 것이 
 - **`validate_drafts.py` 의 ERROR 를 무시하고 통과시킨다** — `tagNames`/`tagIds` 비대칭, task status/post status 혼동, 길이 상한은 이제 스크립트가 잡는다. 잡힌 것을 Evaluator 가 흘려보내면 스크립트를 넣은 의미가 없다.
 - **프로브 1을 재실행 없이 인용한다** — `generator_report_v<n>.md` 에 실린 검증기 리포트를 옮겨 적는 것은 수행이 아니다. Evaluator 가 **직접 실행**해 대조해야 한다(자기평가를 옮겨 적는 것과 같은 형태의 실패).
 - `generator_report_v<n>.md`의 자기평가를 그대로 옮겨 적는다(독립 채점 실패).
-- **프로브 5(초안 단위 게이트 표기 감사)를 형식적으로 통과 처리한다** — 미리보기에 실릴 인자가 **전송될 인자 전문인지**·read-back 불가 2종 표기가 있는지를 **초안 단위로** 대조하지 않고 넘긴다. 라운드마다 같은 답이 나오던 절차 배치 (a)(c)(d)는 v1.2.0 에서 프로브 밖 「절차 불변식」으로 옮겼으므로, 여기 남은 것은 전부 초안마다 달라지는 항목이다.
+- **프로브 5(초안 단위 게이트 표기 감사)를 형식적으로 통과 처리한다** — 미리보기에 실릴 인자가 **전송될 인자 전문인지**·read-back 불가 1종 표기가 있는지를 **초안 단위로** 대조하지 않고 넘긴다. 라운드마다 같은 답이 나오던 절차 배치 (a)(c)(d)는 v1.2.0 에서 프로브 밖 「절차 불변식」으로 옮겼으므로, 여기 남은 것은 전부 초안마다 달라지는 항목이다.
 - 어떤 기준에 3점을 주고 verdict를 PASS로 낸다(현행 로직에서 **3점 이하는 FAIL**이다).
 
 **(c) 놓친 사례를 구체 반례 앵커로 추가한다.** `references/evaluator-calibration.md`의 해당 기준·해당 점수대에 넣거나 `references/evaluator-prompt.md`의 프로브 문구를 강화한다. 예 — "커밋 해시 `a3f91c2`를 검증 없이 통과시켰다 → 프로브 2에 `git cat-file -e <hash>^{commit}` 확인을 명령형으로 명시" · "이 다이제스트에 C1 4점을 줬으나 명령 출력이 없다 → C1의 3/5 앵커로 추가".
@@ -315,7 +315,7 @@ Opus 5에서는 단일 연속 Generator가 초안 묶음을 완주하는 것이 
 
 | 파일 | 언제 읽는가 |
 |---|---|
-| `references/board-tool-contract.md` | **항상.** 세 역할 전부 + 오케스트레이터. 도구 14종의 정본 계약 + §3-1 read-back 수단 |
+| `references/board-tool-contract.md` | **항상.** 세 역할 전부 + 오케스트레이터. 도구 16종의 정본 계약 + §3-1 read-back 수단 + §3-2 댓글 공개 범위 |
 | `references/planner-prompt.md` | 7단계 Planner 디스패치 시 |
 | `references/generator-prompt.md` | 8단계 Generator 디스패치 시 |
 | `references/evaluator-prompt.md` | 9단계 Evaluator 디스패치 시 |

@@ -53,7 +53,7 @@ task 3건의 `detail`에 각각 파일 경로가 있으나 post 본문에는 좌
 `board_list_posts`를 증상 키워드·컴포넌트명 등 **서로 다른 `q` 3회**로 조회하고 후보 3건을 `board_get_post`로 본문 대조한 뒤 "신규" 판정 근거를 기록. `board_get_taxonomy`·`board_list_statuses` 반환 id만 사용. post 상태 전이가 실제 task 상태 분포와 일치(전 task `DONE`일 때만 post `DONE`).
 
 **추가 3/5 앵커**
-중복 후보를 발견해 신규 생성을 포기했으나, 그 후보를 `board_create_suggestion`의 `duplicates`로 남기지 않아 보드 정리에 아무 기여가 없다. 정확하지만 큐레이션 기여가 빠졌다.
+중복 후보를 발견해 신규 생성을 포기했으나, 그 후보를 `board_create_suggestion`의 `rationale`에 남기지 않아 보드 정리에 아무 기여가 없다. 정확하지만 큐레이션 기여가 빠졌다.
 
 ---
 

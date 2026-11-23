@@ -10,6 +10,7 @@
 사용:
     python3 scripts/validate_drafts.py <RUN_DIR>/drafts_v<n>.md
     python3 scripts/validate_drafts.py <path> --json
+    python3 scripts/validate_drafts.py <path> --board-visibility PUBLIC   # 댓글 internal 기본값 검사
 
 종료 코드:
     0 = 지적 사항 없음
@@ -40,8 +41,9 @@ WRITE_TOOLS = {
     "board_create_suggestion",
     "board_create_release_draft",
 }
-# read-back 수단이 없는 2종 — 초안에 표기 의무가 있다 (§3-1)
-NO_READBACK = {"board_create_suggestion", "board_create_release_draft"}
+# read-back 수단이 없는 1종 — 초안에 표기 의무가 있다 (§3-1)
+NO_READBACK = {"board_create_release_draft"}
+VISIBILITY = {"PUBLIC", "INTERNAL", "PRIVATE", "UNKNOWN"}
 
 # 근거: §4 필드 길이 상한
 LIMITS = {
@@ -237,8 +239,8 @@ def validate_create_post(findings, where, args, bodies):
     bodies.append(("post body", args.get("body")))
     if "boardId" not in args:
         findings.append(Finding("ERROR", where, "C5-TENANT",
-                                "`boardId` 미지정 — 이 스킬은 "
-                                "BOARD_DEFAULT_BOARD_ID 대체 경로를 쓰지 않는다 (G3)"))
+                                "`boardId` 미지정 — 필수 인자다. 서버가 기본 보드를 "
+                                "고르는 경로는 없다 (G3)"))
     forbid_key(findings, where, args, "tagIds",
                "board_create_post 는 `tagNames`(이름 배열)를 받는다")
     tags = args.get("tagNames")
@@ -285,14 +287,21 @@ def validate_update_task_status(findings, where, args, bodies):
                TASK_STATUS, POST_STATUS, "post status")
 
 
-def validate_add_comment(findings, where, args, bodies):
+def validate_add_comment(findings, where, args, bodies, visibility=None):
     if args.get("postId") is None:
         findings.append(Finding("ERROR", where, "C5-REQUIRED", "필수 필드 `postId` 누락"))
     check_str(findings, where, args.get("body"), "body", "comment_body")
     bodies.append(("comment body", args.get("body")))
-    forbid_key(findings, where, args, "internal",
-               "MCP board_add_comment 는 `{postId, body}` 만 노출한다 — "
-               "팀 전용 플래그가 없고 모든 댓글은 공개다")
+    internal = args.get("internal")
+    if "internal" in args and not isinstance(internal, bool):
+        findings.append(Finding("ERROR", where, "C5-TYPE", "`internal` 은 true/false 여야 한다"))
+    if "parentId" in args and not isinstance(args["parentId"], str):
+        findings.append(Finding("ERROR", where, "C5-TYPE", "`parentId` 는 댓글 id 문자열이어야 한다"))
+    # §3-2 — 공개·미상 보드의 기본은 팀 전용. 사용자 요청으로 공개할 수 있으므로 ERROR 가 아니다.
+    if visibility in ("PUBLIC", "UNKNOWN") and internal is not True:
+        findings.append(Finding("WARN", where, "C5-INTERNAL",
+                                "공개·미상 보드인데 `internal: true` 가 없다 — 외부 독자가 읽는 "
+                                "공개 댓글이 된다. 사용자의 공개 요청이 없으면 `\"internal\": true` 를 싣는다 (§3-2)"))
 
 
 def validate_set_status(findings, where, args, bodies):
@@ -321,17 +330,8 @@ def validate_create_suggestion(findings, where, args, bodies):
                "board_create_suggestion 은 `tagIds`(id 배열)를 받는다 — "
                "board_create_post 와 반대다")
     check_enum(findings, where, args.get("priority"), "priority", PRIORITY)
-    dups = args.get("duplicates")
-    if dups is not None and isinstance(dups, list):
-        for i, d in enumerate(dups, 1):
-            w = "%s · duplicates[%d]" % (where, i)
-            if not isinstance(d, dict):
-                findings.append(Finding("ERROR", w, "C5-TYPE", "duplicates 항목은 객체여야 한다"))
-                continue
-            for k in ("candidateId", "confidence", "reason"):
-                if d.get(k) is None:
-                    findings.append(Finding("ERROR", w, "C5-REQUIRED", "`%s` 누락" % k))
-            check_enum(findings, w, d.get("confidence"), "confidence", PRIORITY)
+    forbid_key(findings, where, args, "duplicates",
+               "서버 스키마에 없는 인자라 전달되지 않는다. 중복 후보는 `rationale` 에 postId 로 적는다")
 
 
 def validate_create_release_draft(findings, where, args, bodies):
@@ -399,7 +399,7 @@ def count_coords(text):
 
 
 # ---------------------------------------------------------------- 본체
-def validate(path):
+def validate(path, visibility=None):
     findings = []
     text = path.read_text(encoding="utf-8")
     blocks = parse_blocks(text)
@@ -436,7 +436,10 @@ def validate(path):
             continue
 
         bodies = []
-        VALIDATORS[b["tool"]](findings, where, args, bodies)
+        if b["tool"] == "board_add_comment":
+            validate_add_comment(findings, where, args, bodies, visibility)
+        else:
+            VALIDATORS[b["tool"]](findings, where, args, bodies)
 
         raw_args = json.dumps(args, ensure_ascii=False)
         scan_secrets(findings, where, "인자 전문", raw_args)
@@ -511,6 +514,9 @@ def main():
         description="drafts_v<n>.md 결정론적 검증 (읽기 전용 · board_* 호출 없음)")
     ap.add_argument("path", help="검증할 drafts_v<n>.md 절대 경로")
     ap.add_argument("--json", action="store_true", help="리포트를 JSON 으로 출력")
+    ap.add_argument("--board-visibility", type=str.upper, choices=sorted(VISIBILITY),
+                    help=".tavlet.json 의 boardVisibility. 값이 없으면 UNKNOWN(공개로 간주). "
+                         "주면 board_add_comment 의 internal 기본값(§3-2)을 검사한다")
     args = ap.parse_args()
 
     path = Path(args.path)
@@ -519,7 +525,7 @@ def main():
         return 2
 
     try:
-        findings, coord_table = validate(path)
+        findings, coord_table = validate(path, args.board_visibility)
     except Exception as exc:  # noqa: BLE001 — 검증기 자체 실패는 조용히 넘기지 않는다
         print("VALIDATOR_ERROR: %s: %s" % (type(exc).__name__, exc), file=sys.stderr)
         return 2

@@ -17,7 +17,7 @@ board_set_status · board_create_suggestion · board_create_release_draft
 당신의 산출물은 **"호출될 인자"이지 "호출"이 아니다.** 실제 실행은 Evaluator PASS 이후 오케스트레이터가
 사용자 명시 승인을 받아 수행한다. 읽기 도구로 증거를 보강하는 것은 허용된다:
 board_list_boards · board_list_posts · board_get_post · board_get_taxonomy · board_list_statuses ·
-board_list_tasks · board_list_release_candidates. 로컬 파일 읽기와 git 조회도 허용된다.
+board_list_tasks · board_list_release_candidates · board_list_comments · board_get_suggestion. 로컬 파일 읽기와 git 조회도 허용된다.
 그리고 `{SKILL_ROOT}/scripts/validate_drafts.py` 실행이 허용된다 — 자기 초안 텍스트만 읽는
 읽기 전용 검증기이며 board_* 를 호출하지도 네트워크에 접속하지도 않는다((d) 참조).
 
@@ -36,7 +36,7 @@ board_list_tasks · board_list_release_candidates. 로컬 파일 읽기와 git �
 ## 먼저 읽을 것 (건너뛰지 말 것 · 못 열면 BLOCKED)
 
 - `{RUN_DIR}/spec.md` — 전문. 진실 원천.
-- `{SKILL_ROOT}/references/board-tool-contract.md` — board_* 14종 정본 계약. 인자·enum·길이 상한·
+- `{SKILL_ROOT}/references/board-tool-contract.md` — board_* 16종 정본 계약. 인자·enum·길이 상한·
   비대칭 체크리스트·쓰기별 사후 read-back 수단이 전부 여기 있다. 도구 인자를 기억으로 쓰지 않는다.
 - `{SKILL_ROOT}/references/rubric.md` — 제출 전 자기평가에 쓴다.
 - `{SKILL_ROOT}/scripts/validate_drafts.py` — (d)·(e) 에서 **실행한다.** 읽기 전용 검증기.
@@ -92,13 +92,16 @@ board_list_tasks · board_list_release_candidates. 로컬 파일 읽기와 git �
 
 (d) **계약 검증 — 스크립트로 돌린다. 눈으로 대조하지 않는다.**
 
-        python3 {SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md
+        python3 {SKILL_ROOT}/scripts/validate_drafts.py {RUN_DIR}/drafts_v<n>.md \
+            --board-visibility <spec.md §6 의 boardVisibility, 없으면 UNKNOWN>
 
     이 검증기가 board-tool-contract.md 의 계약을 결정론적으로 판정한다 — 필수 필드, enum 철자,
     task status(TODO/DOING/DONE/DROPPED) vs post status(OPEN/UNDER_REVIEW/PLANNED/IN_PROGRESS/
     DONE/DECLINED) 집합 혼동, board_set_status 의 status·columnId **배타**, board_create_post 의
     tagNames(**이름**) vs board_create_suggestion 의 tagIds(**id**) 비대칭, projectId 자리의
-    project slug, §4 길이 상한 전건, 4종 세트 형식, read-back 불가 2종의 표기.
+    project slug, §4 길이 상한 전건, 4종 세트 형식, read-back 불가 1종(`board_create_release_draft`)의 표기,
+    `board_create_suggestion` 의 서버에 없는 `duplicates` 인자, `internal` 의 타입.
+    `--board-visibility <spec.md §6 의 값>` 을 함께 넘기면 공개·미상 보드 댓글의 `internal` 누락도 WARN 으로 잡는다.
 
     **ERROR 가 0 이 될 때까지 고친 뒤에야 다음으로 간다.** ERROR 를 남긴 채 제출하면 Evaluator 가
     프로브 1에서 같은 스크립트를 직접 돌려 그대로 잡아낸다 — 라운드 하나를 버리는 것이다.
@@ -122,7 +125,7 @@ board_list_tasks · board_list_release_candidates. 로컬 파일 읽기와 git �
     (spec.md §6 의 `boardVisibility` 가 `PUBLIC`, 또는 값이 없어 안전 측 기본값으로 `PUBLIC`)
     초안 본문 **전체**를 다시 읽고 미공개 내부 정보를 찾는다 — 내부 부채 상세 · 미공개 로드맵 ·
     고객명 · 내부 인력 배치. 이것은 검증기가 하지 못하며 Evaluator 프로브 5(f)가 다시 본다.
-    **board_add_comment 에는 팀 전용 플래그가 없다 — 모든 댓글은 공개다.**
+    **`board_add_comment` 는 기본이 공개 댓글이다. 공개·미상 보드에서는 `"internal": true`(팀 전용)를 싣는다(계약 §3-2) — 그래도 팀 전용 댓글은 org 구성원 전체가 읽으므로 이 판단 항목은 댓글에도 적용한다.**
 
     스캔 대상과 발견·치환 내역을 보고서에 기록한다. "스캔함"만 쓰지 말고 무엇을 찾았는지 쓴다.
 
