@@ -29,14 +29,15 @@
 
 ## 먼저 읽을 것 (건너뛰지 말 것 · 못 열면 BLOCKED)
 
-- `{SKILL_ROOT}/references/board-tool-contract.md` — board_* 도구 14종의 정본 계약. 인자·enum·
+- `{SKILL_ROOT}/references/board-tool-contract.md` — board_* 도구 16종의 정본 계약. 인자·enum·
   길이 상한·실패 모드·성공/실패 판정 규칙·쓰기별 사후 read-back 수단이 전부 여기 있다.
   도구 이름이나 인자를 기억으로 쓰지 않는다.
 
 ## 도구 권한
 
-읽기 7종만 쓴다: board_list_boards · board_list_posts · board_get_post · board_get_taxonomy ·
-board_list_statuses · board_list_tasks · board_list_release_candidates.
+읽기 9종만 쓴다: board_list_boards · board_list_posts · board_get_post · board_get_taxonomy ·
+board_list_statuses · board_list_tasks · board_list_release_candidates · board_list_comments ·
+board_get_suggestion.
 로컬 파일 읽기와 git 조회는 허용된다.
 **쓰기 7종(board_create_post · board_create_tasks · board_update_task_status · board_add_comment ·
 board_set_status · board_create_suggestion · board_create_release_draft)은 절대 호출하지 않는다.**
@@ -57,8 +58,8 @@ board_set_status · board_create_suggestion · board_create_release_draft)은 �
    빼거나 "증거 보강 필요"로 표시한다.
 
 3. **이 도메인 고유의 부가가치 3종을 능동적으로 찾는다.**
-   (a) **큐레이션 기여** — 중복 후보를 단순히 배제하지 말고 board_create_suggestion 의 duplicates
-       (candidateId · confidence · reason)로 남겨 보드 정리에 기여한다.
+   (a) **큐레이션 기여** — 중복 후보를 단순히 배제하지 말고 board_create_suggestion 의 rationale 에
+       후보 postId 와 근거를 적어 보드 정리에 기여한다(`duplicates` 인자는 서버에 없다).
    (b) **릴리스 연계** — DONE 전이가 발생하면 board_list_release_candidates 를 확인해 릴리스 초안
        기회를 계획에 포함할지 판단한다. projectId 는 board_list_boards 반환값이다(slug 아님).
    (c) **역추적 가능성** — 커밋 트레일러 [tv:<taskId>] 를 계획에 반영해, 이 스킬 없이 한 후속
@@ -90,7 +91,8 @@ board_set_status · board_create_suggestion · board_create_release_draft)은 �
 - PUBLIC 이면 독자는 조직 밖 사용자다 → 내부 용어·미공개 로드맵·고객명·내부 부채 상세를 배제하고
   증상·영향·해결 상태 중심으로 쓰도록 지시한다.
 - INTERNAL 이면 독자는 팀이다 → 기술 상세와 내부 용어를 허용하되 여전히 좌표를 붙이게 한다.
-- **MCP 경유 댓글에는 팀 전용 플래그가 없다. 모든 댓글은 공개다.** 이 사실을 이 절에 적는다.
+- **댓글 공개 범위를 이 절에 적는다.** PUBLIC·미상이면 `board_add_comment` 는 `"internal": true`(팀 전용, DEVELOPER↑ 토큰
+  필요)를 기본으로 싣는다. 사용자가 공개 댓글을 요청했으면 그 근거를 적는다(계약 §3-2).
 
 ### 증거 기준 (하드)
 모든 결과 주장에 검증 좌표를 붙인다:
@@ -121,9 +123,8 @@ board_set_status · board_create_suggestion · board_create_release_draft)은 �
   - 목적:
   - 필요한 증거: [§6 의 어느 항목을 쓰는지 지목]
   - 선행 조건: [먼저 성공해야 하는 쓰기 번호. 없으면 "없음"]
-  - 성공 판정: [무엇이 반환·재조회되면 성공인가. board_create_suggestion 은 조회 도구가 14종 안에
-    없고 board_create_release_draft 는 초안 자체를 재조회할 수단이 없다(간접 확인 2종만) — 이 둘의
-    성공 판정은 **반환된 id** 로 적는다. "재조회로 확인"을 적으면 처음부터 달성 불가능한 DoD 가 된다.
+  - 성공 판정: [무엇이 반환·재조회되면 성공인가. board_create_release_draft 는 초안 자체를 재조회할
+    수단이 없다(간접 확인 2종만) — 그 성공 판정은 **반환된 id** 로 적는다. "재조회로 확인"을 적으면 처음부터 달성 불가능한 DoD 가 된다.
     도구별 read-back 수단은 계약 §3-1 이 정본이다]
 
 ## 6. 보드·테넌트 컨텍스트

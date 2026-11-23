@@ -1,64 +1,49 @@
-# board_* 도구 정본 계약 (14종)
+# board_* 도구 정본 계약 (이 스킬이 쓰는 16종)
 
 `tavlet-tracker`의 Planner · Generator · Evaluator · 오케스트레이터가 **모두** 이 파일을 읽는다. 도구 계약의 유일한 정본이다 — 다른 파일에 복사하지 않는다.
 
 모든 값은 tavlet 체크아웃의 실제 소스에서 확인된 것이다. 근거 경로는 tavlet 레포 루트 기준.
 
-- 도구 등록(원격, 정규 경로): `src/lib/mcp/board-tools.ts` · 엔드포인트 `src/app/api/mcp/route.ts`
-- 도구 등록(로컬 stdio, 개발용): `agent/mcp/board/server.ts` + REST 클라이언트 `board-client.ts`
+- 도구 등록: `src/lib/mcp/board-tools.ts` · 엔드포인트 `src/app/api/mcp/route.ts` — 원격 Streamable HTTP 한 경로뿐이다(로컬 stdio 서버는 tavlet `f91ce574` 에서 삭제됐다)
+- 서버가 노출하는 도구 전체의 이름·설명·입력 스키마: `tests/01-unit/__snapshots__/mcp-tools-list.json`
 - 검증 스키마: `src/lib/validation/posts.ts` · `post-tasks.ts` · `releases.ts` · `primitives.ts`
 - 보드 목록 DTO: `src/lib/services/agent-boards.ts`
 
-> tavlet `CLAUDE.md`는 MCP 도구를 "12종"으로 기재하지만 `server.ts`의 `registerTool` 호출은 **14개**다. **코드를 따른다.**
+> 서버는 도구 **33종**을 노출한다(tavlet `f2ac4eac`, 2026-11-24). 이 스킬은 그중 아래 **16종**만 쓴다 — 개인 task·공유 작업·로드맵·서베이·글 수정/삭제·내 작업함 도구는 이 스킬의 라이프사이클 밖이므로 호출하지 않는다. 숫자가 다시 바뀌면 **스냅샷 파일을 따른다.**
 
 ---
 
 ## 0. 성공/실패 판정 — 가장 흔한 함정
 
-두 구현 모두 **오류를 예외로 전파하지 않는다.** 도구 결과 안에 담아 되돌린다:
+서버는 **오류를 예외로 전파하지 않는다.** 도구 결과 안에 담아 되돌린다:
 
 ```ts
-// 원격(board-tools.ts) — REST 와 같은 오류 봉투
+// board-tools.ts — REST 와 같은 오류 봉투(5xx 는 원인을 숨긴 "서버 오류")
 { content: [{ type: "text", text: '{"ok":false,"error":"…","code":"…"}' }], isError: true }
-
-// 로컬 stdio(server.ts:9-16) — 예외 문자열 그대로
-catch (e) { return { content: [{ type: "text", text: String(e) }], isError: true }; }
 ```
 
 **따라서 도구가 텍스트를 되돌렸다는 사실만으로 성공으로 판단하면 안 된다.**
 
 **판정 규칙:**
-- 반환에 `isError: true` 가 있으면 → **실패** (양쪽 공통, 가장 확실한 신호)
-- 파싱한 JSON이 `{"ok": false, …}` 이면 → **실패** (원격)
-- 반환 텍스트가 `Error:` 로 시작하면 → **실패** (stdio)
-- 반환 텍스트가 `[board] <숫자 status> <METHOD> <path>: <본문 앞 300자>` 패턴을 포함하면 → **실패** (stdio, 근거: `board-client.ts:20`)
+- 반환에 `isError: true` 가 있으면 → **실패** (가장 확실한 신호)
+- 파싱한 JSON이 `{"ok": false, …}` 이면 → **실패**
 - 그 외에는 JSON 문자열이며 성공
 
 **실패 시:** 반환 원문을 **그대로** 표면화하고 후속 쓰기를 **취소**한다. 이미 실행된 쓰기와 취소된 쓰기를 분리해 보고한다.
 
 **전역 실패 모드:**
-| 증상 | 경로 | 원인 |
-|---|---|---|
-| HTTP 401 `{"success":false,"error":{"code":40101,…}}` | 원격 | Authorization 헤더가 없다 |
-| HTTP 401 `AGENT_TOKEN_REQUIRED` | 원격 | 인증은 됐지만 PAT 가 아니다(쿠키 세션) — MCP는 에이전트 토큰 전용 표면이다 |
-| HTTP 401 `INVALID_API_TOKEN` | 원격 | PAT 가 무효(폐기·오타) |
-| `{"ok":false,…,"code":"TOKEN_SCOPE_DENIED"}` (403) | 원격 | 대상이 토큰 스코프 밖. 조회 도구는 READ, 쓰기 도구는 WRITE grant 를 요구한다 |
-| `BOARD_TOKEN 미설정` | stdio | env `BOARD_TOKEN`이 MCP 서버 프로세스에 전달되지 않음 (`board-client.ts:9-10`) |
-| `[board] 400 GET /api/agent/boards: 에이전트 토큰이 필요합니다.` | stdio | 토큰 없이(쿠키 세션으로) 에이전트 API 접근 (`agent-boards.ts:26`) |
+| 증상 | 원인 |
+|---|---|
+| HTTP 401 `{"success":false,"error":{"code":40101,…}}` | Authorization 헤더가 없다 |
+| HTTP 401 `AGENT_TOKEN_REQUIRED` | 인증은 됐지만 PAT 가 아니다(쿠키 세션) — MCP는 에이전트 토큰 전용 표면이다 |
+| HTTP 401 `INVALID_API_TOKEN` | PAT 가 무효(폐기·오타) |
+| `{"ok":false,…,"code":"TOKEN_SCOPE_DENIED"}` (403) | 대상이 토큰 스코프 밖. 조회 도구는 READ, 쓰기 도구는 WRITE grant 를 요구한다(`board_list_boards` 만 예외로 WRITE) |
 
 ---
 
 ## 1. 인증 · 환경변수
 
-**원격(정규 경로)** — env 없음. PAT 를 `Authorization: Bearer` 헤더로 넘긴다. 대상 테넌트는 **토큰 스코프만이** 정하며, 서버가 기본 보드를 고르는 경로는 존재하지 않는다 — `board_create_post` 의 `boardId` 는 필수 인자다.
-
-**로컬 stdio(개발용)** — env 3종:
-
-| 변수 | 기본값 | 역할 | 근거 |
-|---|---|---|---|
-| `BOARD_BASE_URL` | `http://localhost:18000` | REST 베이스. 뒤 슬래시는 제거됨 | `board-client.ts:4` |
-| `BOARD_TOKEN` | 없음 | PAT. **미설정이면 모든 호출이 throw** | `board-client.ts:5,10` |
-| `BOARD_DEFAULT_BOARD_ID` | 없음 | `board_create_post`에서 `boardId` 생략 시 대체 — **이 스킬은 쓰지 않는다**(게이트 G3) | `server.ts:46` |
+env 는 없다. PAT 를 `Authorization: Bearer` 헤더로 넘긴다. 대상 테넌트는 **토큰 스코프만이** 정하며, 서버가 기본 보드를 고르는 경로는 존재하지 않는다 — `board_create_post` 의 `boardId` 는 필수 인자다.
 
 PAT 접두사: 신규 발급은 `tvl_`, 레거시 `hhb_`는 **검증 수용 전용**(신규 발급 없음). 두 접두사 모두 **스크럽 대상**이다.
 
@@ -109,50 +94,62 @@ DB 상 보드는 `kind`(`BoardKind` = `FEATURE`·`BUG`·`FEEDBACK`)와 `visibili
 
 ---
 
-## 3. 도구 14종 계약표
+## 3. 도구 16종 계약표
 
-**R = 읽기(7종, 게이트 없음) · W = 쓰기(7종, 미리보기 + 명시 승인 필수).** 스테이지 코드는 오케스트레이터 워크플로 단계다.
+**R = 읽기(9종, 게이트 없음) · W = 쓰기(7종, 미리보기 + 명시 승인 필수).** 스테이지 코드는 오케스트레이터 워크플로 단계다.
 
 | # | 도구 | R/W | 스테이지 | 인자 계약 | 실패 모드 | 사후 read-back 수단 |
 |---|---|---|---|---|---|---|
-| 1 | `board_list_boards` | R | **SA 테넌트 해소** (G3) | 인자 없음 (`{}`) | 토큰 미설정 → `BOARD_TOKEN 미설정`. 토큰 없이 쿠키 세션 → 400 `에이전트 토큰이 필요합니다.` **빈 목록 = 이 토큰이 쓸 수 있는 보드 없음 → 중단** | — |
-| 2 | `board_list_posts` | R | **SB 중복 정찰** (G4, 필수 선행) | `{ boardId, status?, q? }` — `boardId` 필수 | `boardId` 누락 → 스키마 오류. 결과 0건이 "중복 없음"의 근거가 되려면 **서로 다른 `q` 2회 이상** 필요 | — |
+| 1 | `board_list_boards` | R | **SA 테넌트 해소** (G3) | 인자 없음 (`{}`) | 인증 실패는 §0 전역 실패 모드. **빈 목록 = 이 토큰이 쓸 수 있는 보드 없음 → 중단** | — |
+| 2 | `board_list_posts` | R | **SB 중복 정찰** (G4, 필수 선행) | `{ boardId, status?, q?, limit?, offset? }` — `boardId` 필수. `status` 는 post status enum(§5). 반환 `{ posts, total, nextOffset }` — 최신순, `limit` 기본 50·최대 200 | `boardId` 누락·enum 밖 `status`·`limit` 201 이상 → 스키마 오류. **`nextOffset` 이 null 이 아니면 아직 안 본 글이 있다** — `offset` 으로 이어 읽거나 `q` 로 좁힌다. 결과 0건이 "중복 없음"의 근거가 되려면 **서로 다른 `q` 2회 이상** 필요 | — |
 | 3 | `board_get_post` | R | **SB 중복 정찰 / SG 현황 조회** | `{ postId }` | 404(없음)·403(스코프 밖) → 원문 표면화 후 중단 | — |
 | 4 | `board_get_taxonomy` | R | **SC 분류 어휘 확인** | `{ boardId }` | 반환의 **실제 id만** 사용. 존재하지 않는 카테고리 id를 `board_create_post`에 넘기면 서비스가 거절 | — |
 | 5 | `board_list_statuses` | R | **SD 상태 어휘 확인** (`board_set_status` 선행) | `{ boardId }` | `board_set_status`의 `columnId` 후보는 **여기서만** 얻는다. 조회 없이 `columnId`를 지어내지 않는다 | — |
 | 6 | `board_list_tasks` | R | **SF/SG task 현황** | `{ postId }` | post가 없거나 스코프 밖이면 원문 표면화 후 중단 | — |
 | 7 | `board_list_release_candidates` | R | **SK 릴리스 초안 후보** | `{ projectId }` ← `board_list_boards`의 `projectId`. **project slug 금지** | 프로젝트 내 DONE·릴리스 미할당 post 목록 반환. slug를 넘기면 결과 없음/오류 | — |
-| 8 | **`board_create_post`** | **W** | **SE post 등록** | `{ title, body, boardId?, categoryIds?, tagNames? }`. `boardId` 생략 시 `BOARD_DEFAULT_BOARD_ID` env 사용. **`categoryIds`는 id 배열, `tagNames`는 이름 배열 — 비대칭** | `boardId` 미지정 & env 미설정 → throw `boardId 미지정 & BOARD_DEFAULT_BOARD_ID 미설정 — board_list_boards로 등록 대상 boardId를 먼저 확인하세요.` 길이 초과 → 검증 오류 | **가능** — `board_get_post({postId})` 로 `title`·`body`·`categoryIds`·`tags` 대조 |
-| 9 | **`board_create_tasks`** | **W** | **SF task 분해** | `{ postId, items: [{ title, detail? }] }` (일괄). `items` **1–50개** | 빈 `items` 등록 금지(빈 등록은 절차상 중단). 51개 이상 → 검증 오류 | **가능** — `board_list_tasks({postId})` 로 등록된 항목 대조 |
-| 10 | **`board_update_task_status`** | **W** | **SG 진행 갱신** | `{ postId, taskId, status }`, status ∈ **`TODO`·`DOING`·`DONE`·`DROPPED`** | **post 상태 enum과 다른 집합이다 — 혼동 금지.** 세션에서 다루지 않은 task는 전이하지 않는다 | **가능** — `board_list_tasks({postId})` 로 해당 task 의 status 대조 |
-| 11 | **`board_add_comment`** | **W** | **SH 세션 다이제스트** | `{ postId, body }` — body **1–5000자** | **`internal` 플래그 없음 = 공개 댓글.** 스크럽(G7) 필수 | **부분** — `board_get_post({postId})` 의 `commentCount` 증가만 확인. **본문은 재조회되지 않는다**(근거: `posts.ts:340` — DTO에 댓글 본문 없음) |
-| 12 | **`board_set_status`** | **W** | **SI 상태 전이** | `{ postId, status? , columnId? }`, status ∈ **`OPEN`·`UNDER_REVIEW`·`PLANNED`·`IN_PROGRESS`·`DONE`·`DECLINED`** | **둘 다 없음 → throw `status 또는 columnId 중 하나는 필수입니다.` 둘 다 지정 → throw `status·columnId 는 동시에 지정할 수 없습니다.`** (근거: `server.ts:159-160`) | **가능** — `board_get_post({postId})` 의 `status`(=`boardStatus.kind`) · `boardStatus.id`(=`columnId`) 대조 (근거: `posts.ts:335,349`) |
-| 13 | **`board_create_suggestion`** | **W** | **SJ 분류·중복 제안** | `{ postId, categoryIds?, tagIds?, kindNote?, priority?, rationale, duplicates? }`. `rationale` **필수**. `duplicates` 항목 = `{ candidateId, confidence, reason }`. `priority`·`confidence` ∈ `HIGH`·`MEDIUM`·`LOW` | **여기서는 `tagIds`(id) — `board_create_post`의 `tagNames`(이름)와 반대다.** `rationale` 누락 → 스키마 오류. **`categoryIds`·`tagIds` 중 최소 하나가 있어야 한다** — 둘 다 비우면 `rationale` 이 있어도 `{"ok":false,"error":"올바르지 않은 제안입니다.","code":"VALIDATION_FAILED"}` 로 거절된다(2026-09-04 실측). 분류할 대상이 없는 제안은 성립하지 않기 때문이다. 병합은 항상 사람 승인 | **계약 14종에는 없으나 `board_get_suggestion` 이 실재한다**(아래 §3-1 주석). 14종만 쓴다면 **반환 id만 보고** |
-| 14 | **`board_create_release_draft`** | **W** | **SK 릴리스 초안** | `{ projectId, version, name?, body, entries }`. `entries` 항목 = `{ title, body, type, postIds }`, `postIds` **1개 이상**. `type` ∈ `NEW`·`IMPROVED`·`FIXED`·`BETA` | **version 중복 → 409.** 발행되지 않는 **초안**임을 미리보기에 명시 | **초안 자체 없음** — 반환 id·version 그대로 보고. 간접 확인 2종만: `board_get_post({postId}).affectedRelease` 대조 · `board_list_release_candidates` 에서 해당 post 소거 |
+| 8 | **`board_create_post`** | **W** | **SE post 등록** | `{ boardId, title, body, categoryIds?, tagNames? }`. **`boardId` 필수** — 서버가 기본 보드를 고르는 경로는 없다. **`categoryIds`는 id 배열, `tagNames`는 이름 배열 — 비대칭** | `boardId` 누락 → 스키마 오류. 길이 초과 → 검증 오류 | **가능** — `board_get_post({postId})` 로 `title`·`body`·`categoryIds`·`tags` 대조 |
+| 9 | **`board_create_tasks`** | **W** | **SF task 분해** | `{ postId, items: [{ title, detail?, assigneeId?, dueAt? }] }` (일괄). `items` **1–50개**. 이 스킬은 `title`·`detail` 만 쓴다 | 빈 `items` 등록 금지(빈 등록은 절차상 중단). 51개 이상 → 검증 오류 | **가능** — `board_list_tasks({postId})` 로 등록된 항목 대조 |
+| 10 | **`board_update_task_status`** | **W** | **SG 진행 갱신** | `{ postId, taskId, status }`, status ∈ **`TODO`·`DOING`·`DONE`·`DROPPED`** | **post 상태 enum과 다른 집합이다 — 혼동 금지.** `taskId` 가 `postId` 글의 작업이 아니면 404 `POST_TASK_NOT_FOUND`. 세션에서 다루지 않은 task는 전이하지 않는다 | **가능** — `board_list_tasks({postId})` 로 해당 task 의 status 대조 |
+| 11 | **`board_add_comment`** | **W** | **SH 세션 다이제스트** | `{ postId, body, internal?, parentId? }` — body **1–5000자**. `internal: true` = 팀 전용 댓글, 생략 = **공개 댓글**. `parentId` = 답글(1단계) | `internal: true` 는 DEVELOPER↑만 — 아니면 403 `COMMENT_INTERNAL_STAFF_ONLY`. 병합된 글 → 400 `POST_MERGED`. **공개 범위 규칙은 §3-2.** 스크럽(G7)은 `internal` 과 무관하게 필수 | **가능** — `board_list_comments({postId})` 로 본문·`internal` 대조 |
+| 12 | **`board_set_status`** | **W** | **SI 상태 전이** | `{ postId, status? , columnId? }`, status ∈ **`OPEN`·`UNDER_REVIEW`·`PLANNED`·`IN_PROGRESS`·`DONE`·`DECLINED`** | **둘 다 없음 → throw `status 또는 columnId 중 하나는 필수입니다.` 둘 다 지정 → throw `status·columnId 는 동시에 지정할 수 없습니다.`** (근거: `board-tools.ts` 의 `board_set_status` 핸들러) | **가능** — `board_get_post({postId})` 의 `status`(=`boardStatus.kind`) · `boardStatus.id`(=`columnId`) 대조 (근거: `posts.ts:335,349`) |
+| 13 | **`board_create_suggestion`** | **W** | **SJ 분류·중복 제안** | `{ postId, categoryIds?, tagIds?, kindNote?, priority?, rationale }`. `rationale` **필수**. `priority` ∈ `HIGH`·`MEDIUM`·`LOW`. **`duplicates` 인자는 서버 스키마에 없다** — 넘겨도 서비스에 전달되지 않는다. 중복 후보는 `rationale` 본문에 postId 로 적는다 | **여기서는 `tagIds`(id) — `board_create_post`의 `tagNames`(이름)와 반대다.** `rationale` 누락 → 스키마 오류. **`categoryIds`·`tagIds` 중 최소 하나가 있어야 한다** — 둘 다 비우면 `rationale` 이 있어도 `{"ok":false,"error":"올바르지 않은 제안입니다.","code":"VALIDATION_FAILED"}` 로 거절된다(2026-09-04 실측). 분류할 대상이 없는 제안은 성립하지 않기 때문이다. 병합은 항상 사람 승인 | **가능** — `board_get_suggestion({postId})` 로 최신 제안 1건(상태·자동 적용 여부) 대조 |
+| 14 | **`board_create_release_draft`** | **W** | **SK 릴리스 초안** | `{ projectId, version, name?, body, entries }` (서버는 `platforms?`·`milestoneIds?` 도 받지만 이 스킬은 쓰지 않는다). `entries` 항목 = `{ title, body, type, postIds }`, `postIds` **1개 이상**. `type` ∈ `NEW`·`IMPROVED`·`FIXED`·`BETA` | **version 중복 → 409.** 발행되지 않는 **초안**임을 미리보기에 명시 | **초안 자체 없음** — 반환 id·version 그대로 보고. 간접 확인 2종만: `board_get_post({postId}).affectedRelease` 대조 · `board_list_release_candidates` 에서 해당 post 소거 |
+| 15 | `board_list_comments` | R | **SH 댓글 중복 확인 / read-back** | `{ postId }` — 반환 `{ comments }`, 작성순, 답글은 `replies` 로 1단계 중첩 | 내부 댓글은 DEVELOPER↑에게만 보인다. 숨김 글은 스태프가 아니면 404 | — |
+| 16 | `board_get_suggestion` | R | **SJ read-back** | `{ postId }` — 반환 `{ suggestion }`, 없으면 `{"suggestion":null}` | 최신 1건만 준다. 승인·기각은 사람만 한다 | —
 
 **쓰기 7종 = 8·9·10·11·12·13·14.** `board_create_suggestion`은 REST `POST /api/agent/posts/{postId}/suggestions`이며 보드에 상태를 남기므로 **게이트 대상이다.**
-**읽기 7종 = 1·2·3·4·5·6·7.** Evaluator는 읽기 7종만 호출할 수 있다.
+**읽기 9종 = 1–7·15·16.** Evaluator는 읽기 9종만 호출할 수 있다.
 
-### §3-1 사후 read-back — 쓰기 7종 중 5종만 검증된다
+### §3-1 사후 read-back — 쓰기 7종 중 6종이 검증된다
 
-실행(12단계) 후의 read-back은 **읽기 7종으로 할 수 있는 것까지만** 가능하다. 도구 목록에 없는 조회는 존재하지 않는다.
+실행(12단계) 후의 read-back은 **읽기 9종으로 할 수 있는 것까지만** 가능하다. 도구 목록에 없는 조회는 존재하지 않는다.
 
 | 쓰기 도구 | read-back | 무엇을 대조하나 | 근거 |
 |---|---|---|---|
 | `board_create_post` | 가능 | `board_get_post` 의 `title`·`body`·`categoryIds`·`tags` | `services/posts.ts:334-341` |
-| `board_create_tasks` | 가능 | `board_list_tasks` 의 항목 목록 | `board-client.ts:53` |
-| `board_update_task_status` | 가능 | `board_list_tasks` 의 해당 task status | `board-client.ts:53` |
-| `board_add_comment` | **부분** | `board_get_post` 의 `commentCount` 증가만. **본문 대조 불가** | `services/posts.ts:340` (DTO에 댓글 본문 없음) |
+| `board_create_tasks` | 가능 | `board_list_tasks` 의 항목 목록 | `board-tools.ts` `board_list_tasks` |
+| `board_update_task_status` | 가능 | `board_list_tasks` 의 해당 task status | `board-tools.ts` `board_list_tasks` |
+| `board_add_comment` | 가능 | `board_list_comments` 의 본문·`internal`. 단 DEVELOPER 미만 토큰으로 `internal: true` 를 달 수는 없으므로(403) 이 경로에서 보이지 않는 경우는 생기지 않는다 | `services/comments.ts` `listComments` |
 | `board_set_status` | 가능 | `board_get_post` 의 `status`·`boardStatus.id` | `services/posts.ts:335,349` |
-| `board_create_suggestion` | **14종 안에는 없음** | — 계약이 정한 14종에 조회 도구가 없다. 다만 원격 서버는 `board_get_suggestion({postId})` 를 노출하며(2026-09-04 실측 18종), 그것을 쓰면 `{"suggestion":null}` 로 미등록을 실증할 수 있다 | `server.ts` `registerTool` 14건 전수 — suggestion 조회 도구 부재. 원격은 그보다 많다 |
+| `board_create_suggestion` | 가능 | `board_get_suggestion` 의 최신 제안(상태·`rationale`). `{"suggestion":null}` 이면 미등록 | `services/suggestions.ts` `getPostSuggestion` |
 | `board_create_release_draft` | **초안 자체 없음** | 간접 2종만: 포함된 post 의 `affectedRelease`(version 대조) · `board_list_release_candidates` 에서 그 post 소거 | `services/posts.ts:346` · `services/releases.ts:399`(후보 조건 `affectedReleaseId: null`) · `releases.ts:462-463`(초안 생성이 `affectedReleaseId` 를 채운다) |
 
 **보고 규약 (지키지 않으면 C2 위반):**
-- read-back이 **없는 2종**(`board_create_suggestion`·`board_create_release_draft`)은 **미리보기와 최종 보고 양쪽에** `반환 id만 · 재조회 수단 없음` 을 표기한다.
-  - 다만 이 표기는 **계약 14종 기준**이다. 세션에 `board_get_suggestion` 이 노출되어 있다면 그것으로 확인할 수 있고, 확인했다면 표기 대신 그 결과를 적는다. 없는 확인을 했다고 적지 않는 것이 규칙의 취지이지, 있는 도구를 쓰지 말라는 뜻이 아니다.
-- `board_add_comment`는 "댓글 등록을 확인했다"가 아니라 **"`commentCount` 증가만 확인, 본문은 재조회 불가"** 로 적는다.
+- read-back이 **없는 1종**(`board_create_release_draft`)은 **미리보기와 최종 보고 양쪽에** `반환 id만 · 재조회 수단 없음` 을 표기한다.
+- `board_add_comment`는 `board_list_comments` 에서 **승인한 본문과 같은 댓글을 찾았을 때만** "등록 확인"으로 적는다. 개수 증가만으로 판정하지 않는다 — 제3자 댓글과 구별되지 않는다.
 - 릴리스 초안의 간접 확인 2종을 수행했다면 **간접임을 명시**한다. 초안 본문·엔트리는 어느 쪽으로도 재조회되지 않는다.
 - **검증하지 않은 것을 검증했다고 쓰지 않는다.** 이 스킬은 그 문장을 막으려고 존재한다.
+
+### §3-2 댓글 공개 범위 — `internal` 기본값
+
+| `.tavlet.json` 의 `boardVisibility` | `board_add_comment` 기본 인자 |
+|---|---|
+| `PUBLIC`, 또는 값 없음·모호(§가시성의 안전 측 기본값) | **`"internal": true`** |
+| `INTERNAL` · `PRIVATE` | `internal` 생략(공개 댓글 — 그 보드를 볼 수 있는 구성원만 읽는다) |
+
+- 공개 보드에서 사용자가 공개 댓글을 원하면 `internal` 을 빼되, 미리보기에 **"외부 독자가 읽는 공개 댓글"** 을 표기하고 G6 별도 확인을 받는다.
+- 403 `COMMENT_INTERNAL_STAFF_ONLY` 가 나면 토큰 사용자가 DEVELOPER 미만이다. **공개 댓글로 조용히 바꿔 재시도하지 않는다** — 실패로 처리하고, 공개 댓글로 바꿀지 사용자에게 묻는다. 바꾸면 인자가 달라지므로 재-미리보기(G5)다.
+- 팀 전용 댓글도 **스크럽(G7)은 그대로 한다.** org 구성원 전체가 읽고, 보드·댓글 설정은 나중에 바뀔 수 있다.
 
 ---
 
@@ -183,10 +180,10 @@ DB 상 보드는 `kind`(`BoardKind` = `FEATURE`·`BUG`·`FEEDBACK`)와 `visibili
 
 | 대상 | 허용 값 | 근거 |
 |---|---|---|
-| **task status** (`board_update_task_status`) | `TODO` · `DOING` · `DONE` · `DROPPED` | `server.ts:125`, `post-tasks.ts:19` |
-| **post status** (`board_set_status`) | `OPEN` · `UNDER_REVIEW` · `PLANNED` · `IN_PROGRESS` · `DONE` · `DECLINED` | `server.ts:153`, `primitives.ts:24-31` |
-| **suggestion priority / duplicate confidence** | `HIGH` · `MEDIUM` · `LOW` | `server.ts:80,83` |
-| **changelog entry type** | `NEW` · `IMPROVED` · `FIXED` · `BETA` | `server.ts:187`, `releases.ts:4` |
+| **task status** (`board_update_task_status`) | `TODO` · `DOING` · `DONE` · `DROPPED` | `board-tools.ts`, `post-tasks.ts:19` |
+| **post status** (`board_set_status`) | `OPEN` · `UNDER_REVIEW` · `PLANNED` · `IN_PROGRESS` · `DONE` · `DECLINED` | `board-tools.ts`, `primitives.ts:24-31` |
+| **suggestion priority** | `HIGH` · `MEDIUM` · `LOW` | `board-tools.ts` |
+| **changelog entry type** | `NEW` · `IMPROVED` · `FIXED` · `BETA` | `board-tools.ts`, `releases.ts:4` |
 | **board kind** (`board_list_boards.kind`) | `FEATURE` · `BUG` · `FEEDBACK` | `prisma/schema.prisma:138-142` |
 | **board visibility** (도구 미노출) | `PUBLIC` · `PRIVATE` · `INTERNAL` | `primitives.ts:23`, `prisma/schema.prisma:132-136,283` |
 
@@ -198,7 +195,7 @@ DB 상 보드는 `kind`(`BoardKind` = `FEATURE`·`BUG`·`FEEDBACK`)와 `visibili
 
 - [ ] `board_create_post` → **`tagNames`**(태그 **이름** 배열, 항목 40자·최대 10개) · `categoryIds`(**id** 배열)
 - [ ] `board_create_suggestion` → **`tagIds`**(태그 **id** 배열) · `categoryIds`(id 배열) — `create_post`와 반대다
-- [ ] `board_create_suggestion` → 두 배열이 **모두 비어 있지 않은지**. 대상 보드의 `board_get_taxonomy` 가 `{"categories":[],"tags":[]}` 라면 지정할 id 가 없으므로 **이 쓰기 자체를 계획에서 뺀다.** 어휘를 만드는 도구는 14종에 없어 사람이 콘솔에서 먼저 만들어야 한다
+- [ ] `board_create_suggestion` → 두 배열이 **모두 비어 있지 않은지**. 대상 보드의 `board_get_taxonomy` 가 `{"categories":[],"tags":[]}` 라면 지정할 id 가 없으므로 **이 쓰기 자체를 계획에서 뺀다.** 어휘를 만드는 board 도구는 없어 사람이 콘솔에서 먼저 만들어야 한다
 - [ ] `projectId`는 **DB id**다. `board_list_boards` 반환의 `projectId`를 쓴다. project **slug**(`default`)를 넣지 않는다
 - [ ] `board_set_status`는 `status`와 `columnId` 중 **정확히 하나**. 둘 다 없거나 둘 다 있으면 throw
 - [ ] `columnId` 값은 `board_list_statuses` 반환에서만 가져온다
@@ -206,7 +203,9 @@ DB 상 보드는 `kind`(`BoardKind` = `FEATURE`·`BUG`·`FEEDBACK`)와 `visibili
 - [ ] task status vs post status 집합 혼동 없음
 - [ ] 대상 `boardId`가 `board_list_boards` 반환에 실재
 - [ ] 모든 문자열이 §4 길이 상한 이내
-- [ ] `board_add_comment`는 팀 전용 플래그가 없다 — 이 댓글은 **공개**다
+- [ ] `board_add_comment` 의 `internal` 이 §3-2 기본값과 맞는다(공개·미상 보드면 `true`)
+- [ ] `board_create_suggestion` 에 `duplicates` 를 넣지 않았다 — 서버에 없는 인자다
+- [ ] `board_list_posts` 정찰에서 `nextOffset` 이 남았는데 "중복 없음"으로 판정하지 않았다
 
 ---
 
@@ -220,9 +219,9 @@ SD 상태 어휘        board_list_statuses
 SE post 등록        board_create_post            [W]
 SF task 분해        board_list_tasks → board_create_tasks   [W]
 SG 진행 갱신        board_list_tasks → board_update_task_status  [W]
-SH 세션 다이제스트  board_add_comment            [W]  (공개 댓글)
+SH 세션 다이제스트  board_list_comments → board_add_comment  [W]  (공개·미상 보드면 internal)
 SI 상태 전이        board_list_statuses → board_set_status  [W]
-SJ 분류·중복 제안   board_get_taxonomy → board_create_suggestion  [W]
+SJ 분류·중복 제안   board_get_taxonomy → board_create_suggestion  [W] → board_get_suggestion
 SK 릴리스 초안      board_list_release_candidates → board_create_release_draft  [W]
 ```
 
